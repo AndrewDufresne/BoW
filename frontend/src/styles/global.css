@@ -1,0 +1,114 @@
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-ink-50 text-ink-800 font-sans antialiased;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply text-ink-900;
+    letter-spacing: -0.01em;
+  }
+  *:focus-visible {
+    outline: 2px solid var(--color-brand-red);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-5 rounded-sm text-sm font-medium transition-colors disabled:cursor-not-allowed;
+    letter-spacing: 0.02em;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-white hover:bg-brand-hover active:bg-brand-active disabled:bg-ink-200 disabled:text-ink-400;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-ink-900 border border-ink-300 hover:bg-ink-100 disabled:bg-ink-100 disabled:text-ink-400;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-info hover:underline px-2;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:opacity-90;
+  }
+
+  .input {
+    @apply w-full h-10 px-3 rounded-sm border border-ink-300 bg-white text-ink-900 text-sm placeholder:text-ink-400 focus:border-brand focus:ring-0 outline-none transition-colors;
+  }
+  .input:focus {
+    box-shadow: 0 0 0 3px rgba(219, 0, 17, 0.15);
+  }
+  .input-error {
+    @apply border-danger;
+  }
+  .input-error:focus {
+    box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.15);
+  }
+  textarea.input {
+    @apply h-auto py-2;
+  }
+
+  .label {
+    @apply block text-[13px] font-medium text-ink-600 mb-1.5;
+  }
+  .req::after {
+    content: " *";
+    color: var(--color-brand-red);
+  }
+
+  .card {
+    @apply bg-white border border-ink-200 rounded shadow-elev1;
+  }
+
+  .table-base {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-base thead th {
+    @apply bg-ink-100 text-ink-600 text-xs font-semibold text-left px-4 py-3 border-b border-ink-200 uppercase tracking-wider;
+  }
+  .table-base tbody td {
+    @apply px-4 py-3 border-b border-ink-200 text-ink-800 align-middle;
+  }
+  .table-base tbody tr:hover {
+    @apply bg-ink-100;
+  }
+
+  .tag {
+    @apply inline-flex items-center h-[22px] px-2 text-xs font-medium rounded-sm;
+  }
+  .tag-success {
+    background: rgba(16, 126, 62, 0.1);
+    color: var(--color-success);
+  }
+  .tag-warning {
+    background: rgba(199, 119, 0, 0.1);
+    color: var(--color-warning);
+  }
+  .tag-danger {
+    background: rgba(200, 16, 46, 0.1);
+    color: var(--color-error);
+  }
+  .tag-neutral {
+    @apply bg-ink-200 text-ink-600;
+  }
+
+  .helper-error {
+    @apply text-xs text-danger mt-1;
+  }
+}

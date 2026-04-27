@@ -1,0 +1,36 @@
+/* === Design tokens — see Docs/DESIGN.md === */
+:root {
+  /* Brand */
+  --color-brand-red: #db0011;
+  --color-brand-red-hover: #b5000e;
+  --color-brand-red-active: #8a000b;
+  --color-brand-red-soft: #fce6e8;
+
+  /* Neutrals */
+  --color-black: #000000;
+  --color-gray-900: #1b1b1b;
+  --color-gray-800: #333333;
+  --color-gray-600: #5f6b7a;
+  --color-gray-400: #9aa3ad;
+  --color-gray-300: #c9cdd2;
+  --color-gray-200: #e5e7ea;
+  --color-gray-100: #f2f3f5;
+  --color-gray-50: #f7f8fa;
+  --color-white: #ffffff;
+
+  /* Semantic */
+  --color-success: #107e3e;
+  --color-warning: #c77700;
+  --color-error: #c8102e;
+  --color-info: #0f6bb4;
+
+  /* Spacing scale (use Tailwind by default; vars for ad-hoc use) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+}

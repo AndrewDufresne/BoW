@@ -1,0 +1,25 @@
+[project]
+name = "bow-backend"
+version = "0.1.0"
+description = "Book of Work — FastAPI backend (PoC)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30",
+    "pydantic[email]>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dateutil>=2.9",
+    "loguru>=0.7",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
