@@ -12,14 +12,14 @@ UI follows the HSBC-inspired design system in [`Docs/DESIGN.md`](Docs/DESIGN.md)
 ## Project layout
 
 ```
-backend/    FastAPI app  (uv + SQLAlchemy + SQLite)
+backend/    FastAPI app  (Poetry + SQLAlchemy + SQLite)
 frontend/   React app    (Vite + TypeScript + Tailwind + TanStack Query)
 Docs/       Specifications
 ```
 
 ## Prerequisites
 
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/) (`pip install uv` if you don't have it)
+- Python 3.11+ and [Poetry 1.8.2](https://python-poetry.org/) (`pipx install poetry==1.8.2` if you don't have it)
 - Node.js 20+ and pnpm (`npm i -g pnpm`)
 
 ## Run locally
@@ -28,8 +28,8 @@ Docs/       Specifications
 
 ```powershell
 cd backend
-uv sync
-uv run uvicorn app.main:app --reload --port 8000
+poetry install
+poetry run uvicorn app.main:app --reload --port 8000
 ```
 
 - API base: `http://localhost:8000/api/v1`
