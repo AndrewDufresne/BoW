@@ -12,7 +12,7 @@ export interface TeamMini {
   name: string;
 }
 
-export type EmploymentType = "Permanent" | "Contractor" | "Intern";
+export type EmploymentType = string;
 
 export interface Person {
   id: string;

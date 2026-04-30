@@ -3,6 +3,7 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
 import { Field, Input, Textarea } from "@/components/Form";
+import { Combobox, distinct } from "@/components/Combobox";
 import { useTeamMutations, useTeams } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
@@ -166,10 +167,12 @@ export default function TeamsTab() {
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Manager">
-            <Input
+            <Combobox
               value={form.manager}
-              onChange={(e) => setForm({ ...form, manager: e.target.value })}
+              onChange={(v) => setForm({ ...form, manager: v })}
+              options={distinct(data, (t) => t.manager).map((s) => ({ value: s, label: s }))}
               placeholder="Manager name"
+              freeSolo
             />
           </Field>
           <Field label="Description">

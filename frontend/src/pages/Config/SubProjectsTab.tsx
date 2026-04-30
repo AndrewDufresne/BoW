@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
-import { Field, Input, Select, Textarea } from "@/components/Form";
+import { Field, Input, Textarea } from "@/components/Form";
+import { Combobox, distinct } from "@/components/Combobox";
 import { useSubProjects, useSubProjectMutations, useProjects } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
@@ -91,16 +92,17 @@ export default function SubProjectsTab() {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-xs"
           />
-          <select
-            className="input max-w-[220px]"
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-          >
-            <option value="">All projects</option>
-            {projects.data?.map((p) => (
-              <option key={p.id} value={p.id}>{p.code} · {p.name}</option>
-            ))}
-          </select>
+          <div className="w-[260px]">
+            <Combobox
+              value={projectFilter}
+              onChange={setProjectFilter}
+              options={[
+                { value: "", label: "All projects" },
+                ...(projects.data?.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` })) ?? []),
+              ]}
+              placeholder="Filter by project"
+            />
+          </div>
           <select
             className="input max-w-[160px]"
             value={statusFilter}
@@ -176,16 +178,13 @@ export default function SubProjectsTab() {
       >
         <div className="space-y-4">
           <Field label="Project" required>
-            <Select
+            <Combobox
               value={form.project_id}
-              onChange={(e) => setForm({ ...form, project_id: e.target.value })}
+              onChange={(v) => setForm({ ...form, project_id: v })}
+              options={projects.data?.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` })) ?? []}
+              placeholder="Select project…"
               disabled={!!editing}
-            >
-              <option value="">Select project…</option>
-              {projects.data?.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} · {p.name}</option>
-              ))}
-            </Select>
+            />
           </Field>
           <Field label="Name" required>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -198,10 +197,12 @@ export default function SubProjectsTab() {
             />
           </Field>
           <Field label="Funding">
-            <Input
+            <Combobox
               value={form.funding}
-              onChange={(e) => setForm({ ...form, funding: e.target.value })}
+              onChange={(v) => setForm({ ...form, funding: v })}
+              options={distinct(data, (sp) => sp.funding).map((s) => ({ value: s, label: s }))}
               placeholder="CC-12345"
+              freeSolo
             />
           </Field>
         </div>

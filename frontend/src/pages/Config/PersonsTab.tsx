@@ -2,13 +2,12 @@
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
-import { Field, Input, Select } from "@/components/Form";
+import { Field, Input } from "@/components/Form";
+import { Combobox, distinct } from "@/components/Combobox";
 import { usePersonMutations, usePersons, useTeams } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
-import type { EmploymentType, Person } from "@/api/types";
-
-const EMPLOYMENT_TYPES: EmploymentType[] = ["Permanent", "Contractor", "Intern"];
+import type { Person } from "@/api/types";
 
 interface FormState {
   employee_id: string;
@@ -17,7 +16,7 @@ interface FormState {
   location: string;
   line_manager: string;
   allocation: string;
-  employment_type: EmploymentType;
+  employment_type: string;
   funding: string;
   team_id: string;
 }
@@ -41,6 +40,7 @@ export default function PersonsTab() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [teamFilter, setTeamFilter] = useState<string>("");
   const [editing, setEditing] = useState<Person | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -49,6 +49,7 @@ export default function PersonsTab() {
   const filtered = (data ?? []).filter((p) => {
     if (statusFilter === "active" && !p.active) return false;
     if (statusFilter === "inactive" && p.active) return false;
+    if (teamFilter && p.team_id !== teamFilter) return false;
     const q = search.toLowerCase();
     if (
       q &&
@@ -59,6 +60,13 @@ export default function PersonsTab() {
       return false;
     return true;
   });
+
+  // Suggestions (distinct existing values) for free-text fields
+  const allPersons = data ?? [];
+  const locationSuggestions = distinct(allPersons, (p) => p.location);
+  const managerSuggestions = distinct(allPersons, (p) => p.line_manager);
+  const fundingSuggestions = distinct(allPersons, (p) => p.funding);
+  const employmentSuggestions = distinct(allPersons, (p) => p.employment_type);
 
   const openNew = () => {
     setEditing(null);
@@ -94,7 +102,7 @@ export default function PersonsTab() {
       location: form.location || null,
       line_manager: form.line_manager || null,
       allocation: form.allocation ? allocNum : 100,
-      employment_type: form.employment_type,
+      employment_type: form.employment_type || "Permanent",
       funding: form.funding || null,
       team_id: form.team_id,
     };
@@ -112,6 +120,8 @@ export default function PersonsTab() {
     }
   };
 
+  const teamOptions = (teams.data ?? []).map((t) => ({ value: t.id, label: t.name }));
+
   return (
     <>
       <Card
@@ -119,13 +129,21 @@ export default function PersonsTab() {
         title="People"
         actions={<Button onClick={openNew}>+ New Person</Button>}
       >
-        <div className="px-6 py-4 flex items-center gap-3 border-b border-ink-200">
+        <div className="px-6 py-4 flex items-center gap-3 border-b border-ink-200 flex-wrap">
           <Input
             placeholder="Search by name, email or employee ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
+          <div className="w-[200px]">
+            <Combobox
+              value={teamFilter}
+              onChange={setTeamFilter}
+              options={[{ value: "", label: "All teams" }, ...teamOptions]}
+              placeholder="Filter by team"
+            />
+          </div>
           <select
             className="input max-w-[160px]"
             value={statusFilter}
@@ -223,18 +241,15 @@ export default function PersonsTab() {
             </Field>
           </div>
           <Field label="Team" required>
-            <Select
+            <Combobox
               value={form.team_id}
-              onChange={(e) => setForm({ ...form, team_id: e.target.value })}
+              onChange={(v) => setForm({ ...form, team_id: v })}
+              options={teamOptions}
+              placeholder="Search team…"
               invalid={!teamValid}
-            >
-              <option value="">Select a team…</option>
-              {teams.data?.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </Select>
+            />
             <p className="text-xs text-ink-600 mt-1">
-              One row per (person, team). To assign a person to multiple teams, create one row per team using the same Employee ID.
+              One row per (person, team). For multi-team people, create one row per team using the same Employee ID.
             </p>
           </Field>
           <Field label="Email" error={!emailValid ? "Invalid email format" : undefined}>
@@ -247,17 +262,21 @@ export default function PersonsTab() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Location">
-              <Input
+              <Combobox
                 value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                onChange={(v) => setForm({ ...form, location: v })}
+                options={locationSuggestions.map((s) => ({ value: s, label: s }))}
                 placeholder="Hong Kong"
+                freeSolo
               />
             </Field>
             <Field label="Line Manager">
-              <Input
+              <Combobox
                 value={form.line_manager}
-                onChange={(e) => setForm({ ...form, line_manager: e.target.value })}
+                onChange={(v) => setForm({ ...form, line_manager: v })}
+                options={managerSuggestions.map((s) => ({ value: s, label: s }))}
                 placeholder="Manager name"
+                freeSolo
               />
             </Field>
           </div>
@@ -274,22 +293,21 @@ export default function PersonsTab() {
               />
             </Field>
             <Field label="Employment Type">
-              <Select
+              <Combobox
                 value={form.employment_type}
-                onChange={(e) =>
-                  setForm({ ...form, employment_type: e.target.value as EmploymentType })
-                }
-              >
-                {EMPLOYMENT_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </Select>
+                onChange={(v) => setForm({ ...form, employment_type: v })}
+                options={employmentSuggestions.map((s) => ({ value: s, label: s }))}
+                placeholder="Permanent"
+                freeSolo
+              />
             </Field>
             <Field label="Funding">
-              <Input
+              <Combobox
                 value={form.funding}
-                onChange={(e) => setForm({ ...form, funding: e.target.value })}
+                onChange={(v) => setForm({ ...form, funding: v })}
+                options={fundingSuggestions.map((s) => ({ value: s, label: s }))}
                 placeholder="CC-12345"
+                freeSolo
               />
             </Field>
           </div>

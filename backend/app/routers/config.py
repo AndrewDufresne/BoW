@@ -132,7 +132,7 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
     info.append(["• Persons.team: ONE team name per row. A person who belongs to multiple teams must have one row per team (employee_id repeats)."])
     info.append(["• Projects do NOT have a teams column — every team can pick from any project."])
     info.append(["• Persons.allocation: number 0–100 (FTE percent for that team)."])
-    info.append(["• Persons.employment_type: Permanent | Contractor | Intern."])
+    info.append(["• Persons.employment_type: free text (e.g. Permanent, Contractor, Intern, or any custom value)."])
     info.append(["• SubProjects.project_code: must reference an existing Projects.code (or one being created in this same upload)."])
     info.append(["• Booleans accept TRUE/FALSE/1/0 (case-insensitive)."])
     info.column_dimensions["A"].width = 110
@@ -316,8 +316,8 @@ async def import_template(
             seen_emp_team_in_sheet.add(key)
 
         emp_type = rec.get("employment_type")
-        if emp_type and emp_type not in EMPLOYMENT_TYPES:
-            errors.append(ImportError_(sheet="Persons", row=row_no, message=f"employment_type must be one of {sorted(EMPLOYMENT_TYPES)}"))
+        if emp_type and len(str(emp_type)) > 20:
+            errors.append(ImportError_(sheet="Persons", row=row_no, message="employment_type must be at most 20 characters"))
             continue
 
         if rec.get("allocation") is not None:

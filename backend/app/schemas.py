@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
-EmploymentType = Literal["Permanent", "Contractor", "Intern"]
+EmploymentType = str
 
 
 class ORMBase(BaseModel):

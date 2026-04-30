@@ -3,6 +3,7 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
 import { Field, Input, Textarea } from "@/components/Form";
+import { Combobox, distinct } from "@/components/Combobox";
 import { useProjectMutations, useProjects } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
@@ -190,10 +191,12 @@ export default function ProjectsTab() {
             />
           </Field>
           <Field label="Funding">
-            <Input
+            <Combobox
               value={form.funding}
-              onChange={(e) => setForm({ ...form, funding: e.target.value })}
+              onChange={(v) => setForm({ ...form, funding: v })}
+              options={distinct(data, (p) => p.funding).map((s) => ({ value: s, label: s }))}
               placeholder="CC-12345"
+              freeSolo
             />
           </Field>
         </div>

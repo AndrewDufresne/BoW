@@ -1,12 +1,18 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePersons, useProjectsWithSubs } from "@/api/hooks";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
-import { Field, Input, Select } from "@/components/Form";
-import { PersonSubmitCard } from "./TeamSubmitCard";
+import { Field, Input } from "@/components/Form";
+import { Combobox } from "@/components/Combobox";
+import { toast } from "@/components/Toast";
+import { extractErrorMessage } from "@/api/client";
+import {
+  PersonSubmitCard,
+  type PersonSubmitCardHandle,
+} from "./TeamSubmitCard";
 import type { Person } from "@/api/types";
 
 function currentMonth(): string {
@@ -17,7 +23,6 @@ function currentMonth(): string {
 interface UserGroup {
   key: string;
   label: string;
-  employee_id: string | null;
   name: string;
   rows: Person[];
 }
@@ -31,7 +36,6 @@ function groupPersons(persons: Person[]): UserGroup[] {
       g = {
         key,
         label: `${p.name}${p.employee_id ? ` (${p.employee_id})` : ""}`,
-        employee_id: p.employee_id ?? null,
         name: p.name,
         rows: [],
       };
@@ -47,33 +51,78 @@ export default function SubmitPage() {
   const projects = useProjectsWithSubs();
   const [userKey, setUserKey] = useState<string>("");
   const [month, setMonth] = useState<string>(currentMonth());
+  const [submitting, setSubmitting] = useState(false);
 
   const groups = useMemo(() => groupPersons(persons.data ?? []), [persons.data]);
   const selected = groups.find((g) => g.key === userKey);
-  const sample = selected?.rows[0];
+
+  const cardRefs = useRef<Map<string, PersonSubmitCardHandle>>(new Map());
+  const [validity, setValidity] = useState<Record<string, boolean>>({});
+
+  const handleValidityChange = useCallback((personId: string, valid: boolean) => {
+    setValidity((m) => (m[personId] === valid ? m : { ...m, [personId]: valid }));
+  }, []);
+
+  const setCardRef = useCallback(
+    (personId: string) => (handle: PersonSubmitCardHandle | null) => {
+      if (handle) cardRefs.current.set(personId, handle);
+      else cardRefs.current.delete(personId);
+    },
+    [],
+  );
+
+  const allCardsValid =
+    !!selected &&
+    selected.rows.length > 0 &&
+    selected.rows.every((r) => validity[r.id]);
+
+  const onSubmitAll = async () => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      // Submit each card sequentially so errors are clearly attributable.
+      for (const row of selected.rows) {
+        const handle = cardRefs.current.get(row.id);
+        if (!handle) continue;
+        await handle.submit();
+      }
+      toast.success(
+        `Submitted ${selected.name} for ${month} (${selected.rows.length} team${
+          selected.rows.length > 1 ? "s" : ""
+        })`,
+      );
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const personOptions = groups.map((g) => ({
+    value: g.key,
+    label: g.label,
+    hint: g.rows.map((r) => r.team?.name).filter(Boolean).join(", "),
+  }));
 
   return (
     <>
       <PageHeader
         title="Submit Book of Work"
-        subtitle="Select a person, then allocate 100% per team for the month."
+        subtitle="Select a person, allocate 100% per team, then submit all teams together."
       />
 
       <Card title="Resource" className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Person" required>
-            <Select
+            <Combobox
               value={userKey}
-              onChange={(e) => setUserKey(e.target.value)}
+              onChange={setUserKey}
+              options={personOptions}
+              placeholder={
+                persons.isLoading ? "Loading…" : "Search by name or employee ID…"
+              }
               disabled={persons.isLoading}
-            >
-              <option value="">Select a person…</option>
-              {groups.map((g) => (
-                <option key={g.key} value={g.key}>
-                  {g.label}
-                </option>
-              ))}
-            </Select>
+            />
           </Field>
           <Field label="Month" required>
             <Input
@@ -83,30 +132,6 @@ export default function SubmitPage() {
             />
           </Field>
         </div>
-
-        {selected && sample && (
-          <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
-            <Detail label="Employee ID" value={selected.employee_id} />
-            <Detail label="Location" value={sample.location} />
-            <Detail label="Line Manager" value={sample.line_manager} />
-            <Detail label="Employment Type" value={sample.employment_type} />
-            <Detail label="Email" value={sample.email} />
-            <Detail label="Funding" value={sample.funding} />
-            <Detail
-              label="Teams"
-              value={
-                selected.rows
-                  .map(
-                    (r) =>
-                      `${r.team?.name ?? "—"} (${
-                        r.allocation != null ? Number(r.allocation).toFixed(0) : "0"
-                      }%)`,
-                  )
-                  .join(", ") || "—"
-              }
-            />
-          </div>
-        )}
       </Card>
 
       {!selected ? (
@@ -133,27 +158,45 @@ export default function SubmitPage() {
           />
         </Card>
       ) : (
-        selected.rows.map((row) => (
-          <PersonSubmitCard
-            key={`${row.id}-${month}`}
-            personId={row.id}
-            personName={selected.name}
-            teamName={row.team?.name ?? ""}
-            allocationPct={row.allocation != null ? Number(row.allocation) : null}
-            projects={projects.data}
-            month={month}
-          />
-        ))
+        <>
+          {selected.rows.map((row) => (
+            <PersonSubmitCard
+              key={`${row.id}-${month}`}
+              ref={setCardRef(row.id)}
+              personId={row.id}
+              teamName={row.team?.name ?? ""}
+              allocationPct={row.allocation != null ? Number(row.allocation) : null}
+              projects={projects.data!}
+              month={month}
+              onValidityChange={handleValidityChange}
+            />
+          ))}
+
+          <Card className="mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="text-sm text-ink-700">
+                {allCardsValid ? (
+                  <span className="text-success font-medium">
+                    All {selected.rows.length} team
+                    {selected.rows.length > 1 ? "s" : ""} ready to submit.
+                  </span>
+                ) : (
+                  <span className="text-warning">
+                    Each team card must total 100% before you can submit.
+                  </span>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                disabled={!allCardsValid || submitting}
+                onClick={onSubmitAll}
+              >
+                {submitting ? "Submitting…" : "Submit All"}
+              </Button>
+            </div>
+          </Card>
+        </>
       )}
     </>
-  );
-}
-
-function Detail({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div>
-      <div className="text-ink-500 text-xs uppercase tracking-wide">{label}</div>
-      <div className="text-ink-900">{value || "—"}</div>
-    </div>
   );
 }
