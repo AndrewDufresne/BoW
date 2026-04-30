@@ -26,29 +26,40 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     if not person or not person.active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found or inactive")
 
+    team = db.get(models.Team, payload.team_id)
+    if not team or not team.active:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Team not found or inactive")
+
+    person_team_ids = {t.id for t in person.teams}
+    if team.id not in person_team_ids:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Person '{person.name}' is not a member of team '{team.name}'",
+        )
+
     month_date = _parse_month(payload.month)
 
-    # Validate activities belong to their projects, no duplicate (project, activity)
     seen: set[tuple[str, str]] = set()
     total = Decimal("0")
     for line in payload.lines:
-        key = (line.project_id, line.activity_id)
+        key = (line.project_id, line.sub_project_id)
         if key in seen:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"Duplicate Project + Activity combination: {key}",
+                f"Duplicate Project + Sub-project combination: {key}",
             )
         seen.add(key)
 
-        activity = db.get(models.Activity, line.activity_id)
-        if not activity or not activity.active:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY, f"Activity {line.activity_id} not found"
-            )
-        if activity.project_id != line.project_id:
+        sub = db.get(models.SubProject, line.sub_project_id)
+        if not sub or not sub.active:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"Activity '{activity.name}' does not belong to project {line.project_id}",
+                f"Sub-project {line.sub_project_id} not found",
+            )
+        if sub.project_id != line.project_id:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Sub-project '{sub.name}' does not belong to project {line.project_id}",
             )
         project = db.get(models.Project, line.project_id)
         if not project or not project.active:
@@ -63,7 +74,6 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
             f"Total time spent must equal 100%. Current total: {total}",
         )
 
-    # Upsert: find existing
     submission = db.scalar(
         select(models.Submission).where(
             models.Submission.person_id == person.id,
@@ -73,7 +83,7 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     if submission is None:
         submission = models.Submission(
             person_id=person.id,
-            team_id=person.team_id,
+            team_id=team.id,
             month=month_date,
             status="submitted",
             total_percent=total,
@@ -81,10 +91,9 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
         db.add(submission)
         db.flush()
     else:
-        submission.team_id = person.team_id
+        submission.team_id = team.id
         submission.total_percent = total
         submission.status = "submitted"
-        # Replace lines
         for old in list(submission.lines):
             db.delete(old)
         db.flush()
@@ -94,7 +103,7 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
             models.SubmissionLine(
                 submission_id=submission.id,
                 project_id=line.project_id,
-                activity_id=line.activity_id,
+                sub_project_id=line.sub_project_id,
                 time_spent_pct=Decimal(str(line.time_spent_pct)),
                 comments=line.comments,
             )
@@ -102,7 +111,6 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
 
     db.commit()
     db.refresh(submission)
-    # eager load for response
     submission = db.scalar(
         select(models.Submission)
         .options(selectinload(models.Submission.lines))

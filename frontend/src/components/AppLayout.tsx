@@ -4,7 +4,7 @@ import { ToastViewport } from "@/components/Toast";
 
 const NAV = [
   { to: "/submit", label: "Submit" },
-  { to: "/reports", label: "Reports" },
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/config", label: "Configuration" },
 ];
 

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
-import { Field, Input, Select } from "@/components/Form";
+import { Field, Input } from "@/components/Form";
 import { usePersonMutations, usePersons, useTeams } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
@@ -11,7 +11,7 @@ import type { Person } from "@/api/types";
 interface FormState {
   name: string;
   email: string;
-  team_id: string;
+  team_ids: string[];
 }
 
 export default function PersonsTab() {
@@ -23,7 +23,7 @@ export default function PersonsTab() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<Person | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState<FormState>({ name: "", email: "", team_id: "" });
+  const [form, setForm] = useState<FormState>({ name: "", email: "", team_ids: [] });
   const [confirm, setConfirm] = useState<Person | null>(null);
 
   const filtered = (data ?? []).filter((p) => {
@@ -37,20 +37,32 @@ export default function PersonsTab() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", email: "", team_id: "" });
+    setForm({ name: "", email: "", team_ids: [] });
     setDrawerOpen(true);
   };
   const openEdit = (p: Person) => {
     setEditing(p);
-    setForm({ name: p.name, email: p.email ?? "", team_id: p.team_id ?? "" });
+    setForm({
+      name: p.name,
+      email: p.email ?? "",
+      team_ids: p.team_ids ?? p.teams?.map((t) => t.id) ?? [],
+    });
     setDrawerOpen(true);
+  };
+
+  const toggleTeam = (id: string) => {
+    setForm((f) =>
+      f.team_ids.includes(id)
+        ? { ...f, team_ids: f.team_ids.filter((x) => x !== id) }
+        : { ...f, team_ids: [...f.team_ids, id] },
+    );
   };
 
   const onSave = async () => {
     const payload = {
       name: form.name,
       email: form.email || null,
-      team_id: form.team_id || null,
+      team_ids: form.team_ids,
     };
     try {
       if (editing) {
@@ -98,7 +110,7 @@ export default function PersonsTab() {
             <tr>
               <th>Name</th>
               <th>Email</th>
-              <th>Team</th>
+              <th>Teams</th>
               <th>Status</th>
               <th className="text-right">Actions</th>
             </tr>
@@ -113,7 +125,11 @@ export default function PersonsTab() {
                 <tr key={p.id}>
                   <td className="font-medium text-ink-900">{p.name}</td>
                   <td className="text-ink-600">{p.email || "—"}</td>
-                  <td>{p.team_name || "—"}</td>
+                  <td>
+                    {p.teams && p.teams.length > 0
+                      ? p.teams.map((t) => t.name).join(", ")
+                      : "—"}
+                  </td>
                   <td>
                     <span className={p.active ? "tag tag-success" : "tag tag-neutral"}>
                       {p.active ? "Active" : "Inactive"}
@@ -163,13 +179,26 @@ export default function PersonsTab() {
               placeholder="name@example.com"
             />
           </Field>
-          <Field label="Team">
-            <Select value={form.team_id} onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
-              <option value="">— No team —</option>
-              {teams.data?.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </Select>
+          <Field label="Teams">
+            <div className="border border-ink-300 rounded p-3 max-h-48 overflow-y-auto space-y-2">
+              {teams.data?.length ? (
+                teams.data.map((t) => (
+                  <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.team_ids.includes(t.id)}
+                      onChange={() => toggleTeam(t.id)}
+                    />
+                    <span className="text-sm text-ink-900">{t.name}</span>
+                  </label>
+                ))
+              ) : (
+                <span className="text-sm text-ink-600">No teams available</span>
+              )}
+            </div>
+            <p className="text-xs text-ink-600 mt-1">
+              A person can belong to multiple teams. They’ll pick one when submitting.
+            </p>
           </Field>
         </div>
       </Drawer>

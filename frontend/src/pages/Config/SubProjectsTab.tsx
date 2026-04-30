@@ -3,28 +3,28 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
 import { Field, Input, Select } from "@/components/Form";
-import { useActivities, useActivityMutations, useProjects } from "@/api/hooks";
+import { useSubProjects, useSubProjectMutations, useProjects } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
-import type { Activity } from "@/api/types";
+import type { SubProject } from "@/api/types";
 
 interface FormState {
   project_id: string;
   name: string;
 }
 
-export default function ActivitiesTab() {
+export default function SubProjectsTab() {
   const projects = useProjects(true);
   const [projectFilter, setProjectFilter] = useState<string>("");
-  const { data, isLoading } = useActivities({ projectId: projectFilter || undefined });
-  const m = useActivityMutations();
+  const { data, isLoading } = useSubProjects({ projectId: projectFilter || undefined });
+  const m = useSubProjectMutations();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [editing, setEditing] = useState<Activity | null>(null);
+  const [editing, setEditing] = useState<SubProject | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState<FormState>({ project_id: "", name: "" });
-  const [confirm, setConfirm] = useState<Activity | null>(null);
+  const [confirm, setConfirm] = useState<SubProject | null>(null);
 
   const filtered = (data ?? []).filter((a) => {
     if (statusFilter === "active" && !a.active) return false;
@@ -38,7 +38,7 @@ export default function ActivitiesTab() {
     setForm({ project_id: projectFilter || "", name: "" });
     setDrawerOpen(true);
   };
-  const openEdit = (a: Activity) => {
+  const openEdit = (a: SubProject) => {
     setEditing(a);
     setForm({ project_id: a.project_id, name: a.name });
     setDrawerOpen(true);
@@ -48,10 +48,10 @@ export default function ActivitiesTab() {
     try {
       if (editing) {
         await m.update.mutateAsync({ id: editing.id, name: form.name });
-        toast.success("Activity updated");
+        toast.success("Sub-project updated");
       } else {
         await m.create.mutateAsync(form);
-        toast.success("Activity created");
+        toast.success("Sub-project created");
       }
       setDrawerOpen(false);
     } catch (err) {
@@ -63,8 +63,8 @@ export default function ActivitiesTab() {
     <>
       <Card
         bodyClassName="p-0"
-        title="Activities"
-        actions={<Button onClick={openNew}>+ New Activity</Button>}
+        title="Sub-projects"
+        actions={<Button onClick={openNew}>+ New Sub-project</Button>}
       >
         <div className="px-6 py-4 flex items-center gap-3 border-b border-ink-200 flex-wrap">
           <Input
@@ -107,7 +107,7 @@ export default function ActivitiesTab() {
             {isLoading ? (
               <tr><td colSpan={4} className="text-ink-600">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} className="text-ink-600">No activities.</td></tr>
+              <tr><td colSpan={4} className="text-ink-600">No sub-projects.</td></tr>
             ) : (
               filtered.map((a) => (
                 <tr key={a.id}>
@@ -128,7 +128,7 @@ export default function ActivitiesTab() {
                         size="sm"
                         onClick={async () => {
                           await m.update.mutateAsync({ id: a.id, active: true });
-                          toast.success("Activity activated");
+                          toast.success("Sub-project activated");
                         }}
                       >
                         Activate
@@ -148,7 +148,7 @@ export default function ActivitiesTab() {
         onSubmit={onSave}
         submitLabel={editing ? "Save" : "Create"}
         submitDisabled={!form.name.trim() || (!editing && !form.project_id)}
-        title={editing ? "Edit Activity" : "New Activity"}
+        title={editing ? "Edit Sub-project" : "New Sub-project"}
       >
         <div className="space-y-4">
           <Field label="Project" required>
@@ -171,7 +171,7 @@ export default function ActivitiesTab() {
 
       <ConfirmModal
         open={!!confirm}
-        title="Deactivate activity?"
+        title="Deactivate sub-project?"
         body={
           <>
             <strong>{confirm?.name}</strong> will no longer appear in selectors. Existing
@@ -185,7 +185,7 @@ export default function ActivitiesTab() {
           if (!confirm) return;
           try {
             await m.deactivate.mutateAsync(confirm.id);
-            toast.success("Activity deactivated");
+            toast.success("Sub-project deactivated");
             setConfirm(null);
           } catch (err) {
             toast.error(extractErrorMessage(err));

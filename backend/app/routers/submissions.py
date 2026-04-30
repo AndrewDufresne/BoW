@@ -24,11 +24,11 @@ def _to_read(s: models.Submission) -> schemas.SubmissionRead:
             schemas.SubmissionLineRead(
                 id=line.id,
                 project_id=line.project_id,
-                activity_id=line.activity_id,
+                sub_project_id=line.sub_project_id,
                 time_spent_pct=line.time_spent_pct,
                 comments=line.comments,
                 project_name=line.project.name if line.project else None,
-                activity_name=line.activity.name if line.activity else None,
+                sub_project_name=line.sub_project.name if line.sub_project else None,
             )
             for line in s.lines
         ],

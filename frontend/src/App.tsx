@@ -2,12 +2,14 @@ import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import SubmitPage from "@/pages/Submit/SubmitPage";
-import ReportsPage from "@/pages/Reports/ReportsPage";
+import DashboardLayout from "@/pages/Dashboard/DashboardLayout";
+import StatisticsTab from "@/pages/Dashboard/StatisticsTab";
+import InsightsTab from "@/pages/Dashboard/InsightsTab";
 import ConfigLayout from "@/pages/Config/ConfigLayout";
 import TeamsTab from "@/pages/Config/TeamsTab";
 import PersonsTab from "@/pages/Config/PersonsTab";
 import ProjectsTab from "@/pages/Config/ProjectsTab";
-import ActivitiesTab from "@/pages/Config/ActivitiesTab";
+import SubProjectsTab from "@/pages/Config/SubProjectsTab";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,7 +24,15 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/submit" replace /> },
       { path: "submit", element: <SubmitPage /> },
-      { path: "reports", element: <ReportsPage /> },
+      {
+        path: "dashboard",
+        element: <DashboardLayout />,
+        children: [
+          { index: true, element: <Navigate to="/dashboard/statistics" replace /> },
+          { path: "statistics", element: <StatisticsTab /> },
+          { path: "insights", element: <InsightsTab /> },
+        ],
+      },
       {
         path: "config",
         element: <ConfigLayout />,
@@ -31,7 +41,7 @@ const router = createBrowserRouter([
           { path: "teams", element: <TeamsTab /> },
           { path: "persons", element: <PersonsTab /> },
           { path: "projects", element: <ProjectsTab /> },
-          { path: "activities", element: <ActivitiesTab /> },
+          { path: "sub-projects", element: <SubProjectsTab /> },
         ],
       },
     ],

@@ -1,6 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Activity, Person, Project, Submission, SubmissionLine, Team } from "./types";
+import type {
+  DashboardSubmissionRow,
+  Person,
+  Project,
+  SubProject,
+  Submission,
+  SubmissionLine,
+  Team,
+  TeamProgress,
+} from "./types";
 
 /* ---------- Teams ---------- */
 export const teamsKey = (active?: boolean) => ["teams", { active }] as const;
@@ -49,16 +58,26 @@ export function usePersons(opts: { active?: boolean; teamId?: string } = {}) {
   });
 }
 
+export interface PersonPayload {
+  name: string;
+  email?: string | null;
+  team_ids?: string[];
+  active?: boolean;
+}
+
 export function usePersonMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["persons"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["persons"] });
+    qc.invalidateQueries({ queryKey: ["teams"] });
+  };
   return {
     create: useMutation({
-      mutationFn: async (body: Partial<Person>) => (await api.post<Person>("/persons", body)).data,
+      mutationFn: async (body: PersonPayload) => (await api.post<Person>("/persons", body)).data,
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: async ({ id, ...body }: Partial<Person> & { id: string }) =>
+      mutationFn: async ({ id, ...body }: Partial<PersonPayload> & { id: string }) =>
         (await api.patch<Person>(`/persons/${id}`, body)).data,
       onSuccess: invalidate,
     }),
@@ -84,7 +103,7 @@ export function useProjectMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["projects"] });
-    qc.invalidateQueries({ queryKey: ["activities"] });
+    qc.invalidateQueries({ queryKey: ["sub-projects"] });
   };
   return {
     create: useMutation({
@@ -104,56 +123,56 @@ export function useProjectMutations() {
   };
 }
 
-/* ---------- Activities ---------- */
-export const activitiesKey = (projectId?: string, active?: boolean) =>
-  ["activities", { projectId, active }] as const;
+/* ---------- Sub-projects ---------- */
+export const subProjectsKey = (projectId?: string, active?: boolean) =>
+  ["sub-projects", { projectId, active }] as const;
 
-export function useActivities(opts: { projectId?: string; active?: boolean } = {}) {
+export function useSubProjects(opts: { projectId?: string; active?: boolean } = {}) {
   return useQuery({
-    queryKey: activitiesKey(opts.projectId, opts.active),
+    queryKey: subProjectsKey(opts.projectId, opts.active),
     queryFn: async () =>
       (
-        await api.get<Activity[]>("/activities", {
+        await api.get<SubProject[]>("/sub-projects", {
           params: { project_id: opts.projectId, active: opts.active },
         })
       ).data,
   });
 }
 
-export function useProjectActivities(projectId?: string, active = true) {
+export function useProjectSubProjects(projectId?: string, active = true) {
   return useQuery({
-    queryKey: ["project-activities", projectId, active],
+    queryKey: ["project-sub-projects", projectId, active],
     enabled: !!projectId,
     queryFn: async () =>
       (
-        await api.get<Activity[]>(`/projects/${projectId}/activities`, {
+        await api.get<SubProject[]>(`/projects/${projectId}/sub-projects`, {
           params: { active },
         })
       ).data,
   });
 }
 
-export function useActivityMutations() {
+export function useSubProjectMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["activities"] });
-    qc.invalidateQueries({ queryKey: ["project-activities"] });
+    qc.invalidateQueries({ queryKey: ["sub-projects"] });
+    qc.invalidateQueries({ queryKey: ["project-sub-projects"] });
     qc.invalidateQueries({ queryKey: ["projects"] });
   };
   return {
     create: useMutation({
-      mutationFn: async (body: Partial<Activity>) =>
-        (await api.post<Activity>("/activities", body)).data,
+      mutationFn: async (body: Partial<SubProject>) =>
+        (await api.post<SubProject>("/sub-projects", body)).data,
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: async ({ id, ...body }: Partial<Activity> & { id: string }) =>
-        (await api.patch<Activity>(`/activities/${id}`, body)).data,
+      mutationFn: async ({ id, ...body }: Partial<SubProject> & { id: string }) =>
+        (await api.patch<SubProject>(`/sub-projects/${id}`, body)).data,
       onSuccess: invalidate,
     }),
     deactivate: useMutation({
       mutationFn: async (id: string) =>
-        (await api.delete<Activity>(`/activities/${id}`)).data,
+        (await api.delete<SubProject>(`/sub-projects/${id}`)).data,
       onSuccess: invalidate,
     }),
   };
@@ -175,8 +194,9 @@ export function useSubmissionByPersonMonth(personId?: string, month?: string) {
 
 export interface SubmissionPayload {
   person_id: string;
+  team_id: string;
   month: string;
-  lines: Pick<SubmissionLine, "project_id" | "activity_id" | "time_spent_pct" | "comments">[];
+  lines: Pick<SubmissionLine, "project_id" | "sub_project_id" | "time_spent_pct" | "comments">[];
 }
 
 export function useUpsertSubmission() {
@@ -184,6 +204,44 @@ export function useUpsertSubmission() {
   return useMutation({
     mutationFn: async (payload: SubmissionPayload) =>
       (await api.post<Submission>("/submissions", payload)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["submission"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["submission"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
+
+/* ---------- Dashboard ---------- */
+export function useTeamProgress(month: string) {
+  return useQuery({
+    queryKey: ["dashboard", "team-progress", month],
+    enabled: !!month,
+    queryFn: async () =>
+      (
+        await api.get<TeamProgress[]>("/dashboard/team-progress", {
+          params: { month },
+        })
+      ).data,
+  });
+}
+
+export interface DashboardFilters {
+  month: string;
+  team_id?: string;
+  project_id?: string;
+  completion?: "all" | "submitted" | "missing";
+}
+
+export function useDashboardSubmissions(filters: DashboardFilters) {
+  return useQuery({
+    queryKey: ["dashboard", "submissions", filters],
+    enabled: !!filters.month,
+    queryFn: async () =>
+      (
+        await api.get<DashboardSubmissionRow[]>("/dashboard/submissions", {
+          params: filters,
+        })
+      ).data,
+  });
+}
+

@@ -17,15 +17,16 @@ def _to_read(p: models.Project, count: int) -> schemas.ProjectRead:
         name=p.name,
         description=p.description,
         active=p.active,
-        activity_count=count,
+        sub_project_count=count,
     )
 
 
 @router.get("", response_model=list[schemas.ProjectRead])
 def list_projects(active: bool | None = None, db: Session = Depends(get_db)):
-    stmt = select(models.Project, func.count(models.Activity.id)).outerjoin(
-        models.Activity,
-        (models.Activity.project_id == models.Project.id) & (models.Activity.active.is_(True)),
+    stmt = select(models.Project, func.count(models.SubProject.id)).outerjoin(
+        models.SubProject,
+        (models.SubProject.project_id == models.Project.id)
+        & (models.SubProject.active.is_(True)),
     )
     if active is not None:
         stmt = stmt.where(models.Project.active.is_(active))
@@ -58,8 +59,8 @@ def update_project(project_id: str, payload: schemas.ProjectUpdate, db: Session 
     db.commit()
     db.refresh(p)
     count = db.scalar(
-        select(func.count(models.Activity.id)).where(
-            models.Activity.project_id == p.id, models.Activity.active.is_(True)
+        select(func.count(models.SubProject.id)).where(
+            models.SubProject.project_id == p.id, models.SubProject.active.is_(True)
         )
     ) or 0
     return _to_read(p, count)
@@ -76,24 +77,24 @@ def deactivate_project(project_id: str, db: Session = Depends(get_db)):
     return _to_read(p, 0)
 
 
-@router.get("/{project_id}/activities", response_model=list[schemas.ActivityRead])
-def list_project_activities(
+@router.get("/{project_id}/sub-projects", response_model=list[schemas.SubProjectRead])
+def list_project_sub_projects(
     project_id: str, active: bool | None = True, db: Session = Depends(get_db)
 ):
     project = db.get(models.Project, project_id)
     if not project:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
-    stmt = select(models.Activity).where(models.Activity.project_id == project_id)
+    stmt = select(models.SubProject).where(models.SubProject.project_id == project_id)
     if active is not None:
-        stmt = stmt.where(models.Activity.active.is_(active))
-    stmt = stmt.order_by(models.Activity.name)
+        stmt = stmt.where(models.SubProject.active.is_(active))
+    stmt = stmt.order_by(models.SubProject.name)
     return [
-        schemas.ActivityRead(
-            id=a.id,
-            project_id=a.project_id,
-            name=a.name,
-            active=a.active,
+        schemas.SubProjectRead(
+            id=s.id,
+            project_id=s.project_id,
+            name=s.name,
+            active=s.active,
             project_name=project.name,
         )
-        for a in db.scalars(stmt).all()
+        for s in db.scalars(stmt).all()
     ]

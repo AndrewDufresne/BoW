@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app import models, schemas
 from app.core.db import get_db
@@ -11,14 +11,29 @@ router = APIRouter(prefix="/persons", tags=["persons"])
 
 
 def _to_read(p: models.Person) -> schemas.PersonRead:
+    teams = sorted(p.teams, key=lambda t: t.name)
     return schemas.PersonRead(
         id=p.id,
         name=p.name,
         email=p.email,
-        team_id=p.team_id,
         active=p.active,
-        team_name=p.team.name if p.team else None,
+        team_ids=[t.id for t in teams],
+        teams=[schemas.TeamMini(id=t.id, name=t.name) for t in teams],
     )
+
+
+def _resolve_teams(db: Session, team_ids: list[str]) -> list[models.Team]:
+    if not team_ids:
+        return []
+    teams = db.scalars(select(models.Team).where(models.Team.id.in_(team_ids))).all()
+    found_ids = {t.id for t in teams}
+    missing = [tid for tid in team_ids if tid not in found_ids]
+    if missing:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Team(s) not found: {', '.join(missing)}",
+        )
+    return list(teams)
 
 
 @router.get("", response_model=list[schemas.PersonRead])
@@ -27,22 +42,22 @@ def list_persons(
     team_id: str | None = None,
     db: Session = Depends(get_db),
 ):
-    stmt = select(models.Person).options(joinedload(models.Person.team))
+    stmt = select(models.Person).options(selectinload(models.Person.teams))
     if active is not None:
         stmt = stmt.where(models.Person.active.is_(active))
     if team_id:
-        stmt = stmt.where(models.Person.team_id == team_id)
+        stmt = stmt.where(models.Person.teams.any(models.Team.id == team_id))
     stmt = stmt.order_by(models.Person.name)
-    return [_to_read(p) for p in db.scalars(stmt).all()]
+    return [_to_read(p) for p in db.scalars(stmt).unique().all()]
 
 
 @router.post("", response_model=schemas.PersonRead, status_code=status.HTTP_201_CREATED)
 def create_person(payload: schemas.PersonCreate, db: Session = Depends(get_db)):
     if payload.email and db.scalar(select(models.Person).where(models.Person.email == payload.email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
-    if payload.team_id and not db.get(models.Team, payload.team_id):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Team not found")
-    p = models.Person(**payload.model_dump())
+    teams = _resolve_teams(db, payload.team_ids)
+    p = models.Person(name=payload.name, email=payload.email)
+    p.teams = teams
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -58,8 +73,8 @@ def update_person(person_id: str, payload: schemas.PersonUpdate, db: Session = D
     if "email" in data and data["email"] and data["email"] != p.email:
         if db.scalar(select(models.Person).where(models.Person.email == data["email"])):
             raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
-    if "team_id" in data and data["team_id"] and not db.get(models.Team, data["team_id"]):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Team not found")
+    if "team_ids" in data:
+        p.teams = _resolve_teams(db, data.pop("team_ids") or [])
     for k, v in data.items():
         setattr(p, k, v)
     db.commit()

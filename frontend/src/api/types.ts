@@ -6,13 +6,18 @@ export interface Team {
   member_count: number;
 }
 
+export interface TeamMini {
+  id: string;
+  name: string;
+}
+
 export interface Person {
   id: string;
   name: string;
   email?: string | null;
-  team_id?: string | null;
-  team_name?: string | null;
   active: boolean;
+  team_ids: string[];
+  teams: TeamMini[];
 }
 
 export interface Project {
@@ -21,10 +26,10 @@ export interface Project {
   name: string;
   description?: string | null;
   active: boolean;
-  activity_count: number;
+  sub_project_count: number;
 }
 
-export interface Activity {
+export interface SubProject {
   id: string;
   project_id: string;
   name: string;
@@ -35,17 +40,17 @@ export interface Activity {
 export interface SubmissionLine {
   id?: string;
   project_id: string;
-  activity_id: string;
+  sub_project_id: string;
   time_spent_pct: number | string;
   comments?: string | null;
   project_name?: string | null;
-  activity_name?: string | null;
+  sub_project_name?: string | null;
 }
 
 export interface Submission {
   id: string;
   person_id: string;
-  team_id?: string | null;
+  team_id: string;
   month: string;
   status: string;
   total_percent: number | string;
@@ -53,3 +58,24 @@ export interface Submission {
   team_name?: string | null;
   lines: SubmissionLine[];
 }
+
+export interface TeamProgress {
+  team_id: string;
+  team_name: string;
+  total_active: number;
+  submitted_count: number;
+  completion_pct: number;
+}
+
+export interface DashboardSubmissionRow {
+  submission_id: string | null;
+  person_id: string;
+  person_name: string;
+  team_id: string;
+  team_name: string;
+  month: string;
+  status: "submitted" | "missing";
+  total_percent: number | string | null;
+  updated_at: string | null;
+}
+

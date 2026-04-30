@@ -1,29 +1,18 @@
-import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { clsx } from "clsx";
 import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/Button";
-import { BulkImportModal } from "./BulkImportModal";
 
 const TABS = [
-  { to: "/config/teams", label: "Teams" },
-  { to: "/config/persons", label: "People" },
-  { to: "/config/projects", label: "Projects" },
-  { to: "/config/sub-projects", label: "Sub-projects" },
+  { to: "/dashboard/statistics", label: "Statistics" },
+  { to: "/dashboard/insights", label: "Insights" },
 ];
 
-export default function ConfigLayout() {
-  const [bulkOpen, setBulkOpen] = useState(false);
+export default function DashboardLayout() {
   return (
     <>
       <PageHeader
-        title="Configuration"
-        subtitle="Manage teams, people, projects, and sub-projects."
-        actions={
-          <Button variant="secondary" onClick={() => setBulkOpen(true)}>
-            Bulk Import / Export
-          </Button>
-        }
+        title="Dashboard"
+        subtitle="Track submission progress and explore aggregated insights."
       />
       <div className="border-b border-ink-300 mb-6">
         <div className="flex gap-6">
@@ -46,7 +35,6 @@ export default function ConfigLayout() {
         </div>
       </div>
       <Outlet />
-      <BulkImportModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </>
   );
 }

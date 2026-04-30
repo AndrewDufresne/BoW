@@ -91,7 +91,7 @@ export default function ProjectsTab() {
             <tr>
               <th>Code</th>
               <th>Name</th>
-              <th>Activities</th>
+              <th>Sub-projects</th>
               <th>Status</th>
               <th className="text-right">Actions</th>
             </tr>
@@ -106,7 +106,7 @@ export default function ProjectsTab() {
                 <tr key={p.id}>
                   <td className="font-mono text-ink-900">{p.code}</td>
                   <td className="font-medium">{p.name}</td>
-                  <td className="font-mono">{p.activity_count}</td>
+                  <td className="font-mono">{p.sub_project_count}</td>
                   <td>
                     <span className={p.active ? "tag tag-success" : "tag tag-neutral"}>
                       {p.active ? "Active" : "Inactive"}

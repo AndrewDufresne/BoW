@@ -14,11 +14,12 @@ import { Field, Input, Select, Textarea } from "@/components/Form";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
 import { ProjectActivitySelect } from "./ProjectActivitySelect";
+import { TeamProgressCard } from "./TeamProgressCard";
 
 interface RowDraft {
   key: string;
   project_id: string;
-  activity_id: string;
+  sub_project_id: string;
   time_spent_pct: string;
   comments: string;
 }
@@ -27,7 +28,7 @@ let rowSeed = 1;
 const newRow = (): RowDraft => ({
   key: `row-${rowSeed++}`,
   project_id: "",
-  activity_id: "",
+  sub_project_id: "",
   time_spent_pct: "",
   comments: "",
 });
@@ -42,6 +43,7 @@ export default function SubmitPage() {
   const projects = useProjects(true);
 
   const [personId, setPersonId] = useState<string>("");
+  const [teamId, setTeamId] = useState<string>("");
   const [month, setMonth] = useState<string>(currentMonth());
   const [rows, setRows] = useState<RowDraft[]>([newRow()]);
 
@@ -49,6 +51,21 @@ export default function SubmitPage() {
   const upsert = useUpsertSubmission();
 
   const selectedPerson = persons.data?.find((p) => p.id === personId);
+  const personTeams = selectedPerson?.teams ?? [];
+
+  // Reset team when person changes; auto-pick when only one team
+  useEffect(() => {
+    if (!selectedPerson) {
+      setTeamId("");
+      return;
+    }
+    if (personTeams.length === 1) {
+      setTeamId(personTeams[0].id);
+    } else if (!personTeams.find((t) => t.id === teamId)) {
+      setTeamId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId, selectedPerson?.teams.length]);
 
   // Hydrate rows when existing submission loads
   useEffect(() => {
@@ -59,11 +76,17 @@ export default function SubmitPage() {
         existing.data.lines.map((l) => ({
           key: `row-${rowSeed++}`,
           project_id: l.project_id,
-          activity_id: l.activity_id,
+          sub_project_id: l.sub_project_id,
           time_spent_pct: String(l.time_spent_pct),
           comments: l.comments ?? "",
         })),
       );
+      if (
+        existing.data.team_id &&
+        personTeams.some((t) => t.id === existing.data!.team_id)
+      ) {
+        setTeamId(existing.data.team_id);
+      }
     } else {
       setRows([newRow()]);
     }
@@ -78,8 +101,8 @@ export default function SubmitPage() {
     const seen = new Map<string, number>();
     const dup = new Set<string>();
     rows.forEach((r) => {
-      if (!r.project_id || !r.activity_id) return;
-      const k = `${r.project_id}::${r.activity_id}`;
+      if (!r.project_id || !r.sub_project_id) return;
+      const k = `${r.project_id}::${r.sub_project_id}`;
       if (seen.has(k)) dup.add(r.key).add(rows[seen.get(k)!].key);
       else seen.set(k, rows.indexOf(r));
     });
@@ -89,16 +112,17 @@ export default function SubmitPage() {
   const rowErrors = (r: RowDraft) => {
     const errs: string[] = [];
     if (!r.project_id) errs.push("Project is required");
-    if (!r.activity_id) errs.push("Activity is required");
+    if (!r.sub_project_id) errs.push("Sub-project is required");
     const pct = parseFloat(r.time_spent_pct);
     if (!r.time_spent_pct || isNaN(pct)) errs.push("% is required");
     else if (pct <= 0 || pct > 100) errs.push("% must be > 0 and ≤ 100");
-    if (duplicates.has(r.key)) errs.push("Duplicate Project + Activity");
+    if (duplicates.has(r.key)) errs.push("Duplicate Project + Sub-project");
     return errs;
   };
 
   const allValid =
     !!personId &&
+    !!teamId &&
     !!month &&
     rows.length > 0 &&
     rows.every((r) => rowErrors(r).length === 0);
@@ -117,10 +141,11 @@ export default function SubmitPage() {
     try {
       await upsert.mutateAsync({
         person_id: personId,
+        team_id: teamId,
         month,
         lines: rows.map((r) => ({
           project_id: r.project_id,
-          activity_id: r.activity_id,
+          sub_project_id: r.sub_project_id,
           time_spent_pct: parseFloat(r.time_spent_pct),
           comments: r.comments || null,
         })),
@@ -140,6 +165,8 @@ export default function SubmitPage() {
         subtitle="Allocate 100% of your time across projects for the month."
       />
 
+      <TeamProgressCard month={month} />
+
       {/* Resource card */}
       <Card title="Resource" className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -157,13 +184,34 @@ export default function SubmitPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Team">
-            <Input
-              value={selectedPerson?.team_name ?? ""}
-              readOnly
-              placeholder="Auto-filled from person"
-              className="bg-ink-100"
-            />
+          <Field
+            label="Team"
+            required
+            error={
+              personId && personTeams.length === 0
+                ? "This person has no team assignments. Add them in Configuration."
+                : undefined
+            }
+          >
+            <Select
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+              disabled={!personId || personTeams.length === 0}
+              invalid={!!personId && personTeams.length > 0 && !teamId}
+            >
+              <option value="">
+                {personId
+                  ? personTeams.length
+                    ? "Select team…"
+                    : "No teams"
+                  : "Select person first"}
+              </option>
+              {personTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="Month" required>
             <Input
@@ -193,7 +241,7 @@ export default function SubmitPage() {
               <thead>
                 <tr>
                   <th style={{ width: "26%" }}>Project</th>
-                  <th style={{ width: "22%" }}>Activity</th>
+                  <th style={{ width: "22%" }}>Sub-project</th>
                   <th style={{ width: "14%" }} className="text-right">
                     Time Spent (%)
                   </th>
@@ -213,19 +261,21 @@ export default function SubmitPage() {
                           projects={projects.data ?? []}
                           projectId={r.project_id}
                           onChange={(projectId) =>
-                            updateRow(r.key, { project_id: projectId, activity_id: "" })
+                            updateRow(r.key, { project_id: projectId, sub_project_id: "" })
                           }
                           invalid={!r.project_id}
                         />
                       </td>
                       <td>
                         <ProjectActivitySelect
-                          mode="activity"
+                          mode="sub-project"
                           projects={projects.data ?? []}
                           projectId={r.project_id}
-                          activityId={r.activity_id}
-                          onChange={(activityId) => updateRow(r.key, { activity_id: activityId })}
-                          invalid={!!r.project_id && !r.activity_id}
+                          subProjectId={r.sub_project_id}
+                          onChange={(subProjectId) =>
+                            updateRow(r.key, { sub_project_id: subProjectId })
+                          }
+                          invalid={!!r.project_id && !r.sub_project_id}
                         />
                       </td>
                       <td className="text-right">
@@ -300,7 +350,9 @@ export default function SubmitPage() {
         </Link>
         <Button
           variant="primary"
-          disabled={!allValid || !totalOk || upsert.isPending || noProjects || !personId}
+          disabled={
+            !allValid || !totalOk || upsert.isPending || noProjects || !personId || !teamId
+          }
           onClick={onSubmit}
         >
           {upsert.isPending ? "Submitting…" : "Submit"}

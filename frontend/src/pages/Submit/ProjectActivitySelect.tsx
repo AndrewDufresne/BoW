@@ -1,4 +1,4 @@
-import { useProjectActivities } from "@/api/hooks";
+import { useProjectSubProjects } from "@/api/hooks";
 import { Select } from "@/components/Form";
 import type { Project } from "@/api/types";
 
@@ -13,13 +13,13 @@ interface ProjectModeProps extends BaseProps {
   onChange: (projectId: string) => void;
 }
 
-interface ActivityModeProps extends BaseProps {
-  mode: "activity";
-  activityId: string;
-  onChange: (activityId: string) => void;
+interface SubProjectModeProps extends BaseProps {
+  mode: "sub-project";
+  subProjectId: string;
+  onChange: (subProjectId: string) => void;
 }
 
-type Props = ProjectModeProps | ActivityModeProps;
+type Props = ProjectModeProps | SubProjectModeProps;
 
 export function ProjectActivitySelect(props: Props) {
   if (props.mode === "project") {
@@ -38,22 +38,22 @@ export function ProjectActivitySelect(props: Props) {
       </Select>
     );
   }
-  return <ActivityDropdown {...props} />;
+  return <SubProjectDropdown {...props} />;
 }
 
-function ActivityDropdown({ projectId, activityId, onChange, invalid }: ActivityModeProps) {
-  const q = useProjectActivities(projectId || undefined);
+function SubProjectDropdown({ projectId, subProjectId, onChange, invalid }: SubProjectModeProps) {
+  const q = useProjectSubProjects(projectId || undefined);
   return (
     <Select
-      value={activityId}
+      value={subProjectId}
       onChange={(e) => onChange(e.target.value)}
       disabled={!projectId || q.isLoading}
       invalid={invalid}
     >
-      <option value="">{projectId ? "Select activity…" : "Select project first"}</option>
-      {q.data?.map((a) => (
-        <option key={a.id} value={a.id}>
-          {a.name}
+      <option value="">{projectId ? "Select sub-project…" : "Select project first"}</option>
+      {q.data?.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
         </option>
       ))}
     </Select>
