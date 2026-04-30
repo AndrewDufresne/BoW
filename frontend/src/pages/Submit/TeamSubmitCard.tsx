@@ -31,11 +31,19 @@ interface Props {
   personId: string;
   personName: string;
   teamName: string;
+  allocationPct?: number | null;
   projects: ProjectWithSubs[];
   month: string;
 }
 
-export function PersonSubmitCard({ personId, personName, teamName, projects, month }: Props) {
+export function PersonSubmitCard({
+  personId,
+  personName,
+  teamName,
+  allocationPct,
+  projects,
+  month,
+}: Props) {
   const existing = useSubmissionByPersonMonth(personId, month);
   const upsert = useUpsertSubmission();
 
@@ -127,10 +135,10 @@ export function PersonSubmitCard({ personId, personName, teamName, projects, mon
 
   return (
     <Card
-      title="Projects"
+      title={teamName ? `${teamName} · Projects` : "Projects"}
       actions={
         <span className="text-sm text-ink-600">
-          {teamName ? <>Team: {teamName}</> : null}
+          {allocationPct != null ? <>Allocation: {allocationPct.toFixed(0)}%</> : null}
           {submitted && (
             <span className="ml-3 tag tag-success">Submitted</span>
           )}
