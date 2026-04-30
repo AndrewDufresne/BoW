@@ -1,4 +1,16 @@
-﻿"""Excel-based bulk import/export for Configuration data."""
+﻿"""Excel-based bulk import/export for Configuration data.
+
+IDs are NEVER user-provided. All matching uses natural business keys:
+- Teams: name (case-insensitive)
+- Projects: code (case-sensitive, conventionally upper)
+- Persons: (employee_id, team) — a person who belongs to multiple teams
+  has multiple rows sharing the same employee_id, one per team.
+  Rows without employee_id are always created (cannot be updated via import).
+- SubProjects: (project_code, name) — same name allowed across different projects.
+
+To "delete" a record, set its `active` column to FALSE; rows are never removed
+by import. To rename a Team (`name`) or Project (`code`) — use the UI.
+"""
 
 from __future__ import annotations
 
@@ -21,13 +33,13 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 
 SHEETS: dict[str, list[str]] = {
-    "Teams": ["id", "name", "description", "manager", "active"],
+    "Teams": ["name", "description", "manager", "active"],
     "Persons": [
-        "id", "employee_id", "name", "email", "location", "line_manager",
+        "employee_id", "name", "email", "location", "line_manager",
         "allocation", "employment_type", "funding", "team", "active",
     ],
-    "Projects": ["id", "code", "name", "description", "funding", "active"],
-    "SubProjects": ["id", "project_code", "name", "description", "funding", "active"],
+    "Projects": ["code", "name", "description", "funding", "active"],
+    "SubProjects": ["project_code", "name", "description", "funding", "active"],
 }
 
 EMPLOYMENT_TYPES = {"Permanent", "Contractor", "Intern"}
@@ -59,7 +71,7 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
     _write_header(ws, SHEETS["Teams"])
     if with_data:
         for t in db.query(models.Team).order_by(models.Team.name).all():
-            ws.append([t.id, t.name, t.description or "", t.manager or "", _bool_str(t.active)])
+            ws.append([t.name, t.description or "", t.manager or "", _bool_str(t.active)])
 
     ws = wb.create_sheet("Persons")
     _write_header(ws, SHEETS["Persons"])
@@ -72,7 +84,7 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
         )
         for p, t in rows:
             ws.append([
-                p.id, p.employee_id or "", p.name, p.email or "",
+                p.employee_id or "", p.name, p.email or "",
                 p.location or "", p.line_manager or "",
                 float(p.allocation) if p.allocation is not None else "",
                 p.employment_type or "",
@@ -85,7 +97,7 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
     if with_data:
         for pr in db.query(models.Project).order_by(models.Project.code).all():
             ws.append([
-                pr.id, pr.code, pr.name, pr.description or "",
+                pr.code, pr.name, pr.description or "",
                 pr.funding or "", _bool_str(pr.active),
             ])
 
@@ -100,7 +112,7 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
         )
         for sp, pr in rows:
             ws.append([
-                sp.id, pr.code, sp.name,
+                pr.code, sp.name,
                 sp.description or "", sp.funding or "",
                 _bool_str(sp.active),
             ])
@@ -109,16 +121,21 @@ def _build_workbook(db: Session, *, with_data: bool) -> Workbook:
     info.append(["Book of Work — Configuration Template"])
     info["A1"].font = Font(bold=True, size=14)
     info.append([])
-    info.append(["• Leave `id` blank to create a new row."])
-    info.append(["• Existing rows are matched by `id` and updated."])
+    info.append(["IDs are NEVER user-provided. The system matches existing rows by natural keys:"])
+    info.append(["  • Teams: matched by `name` (case-insensitive)."])
+    info.append(["  • Projects: matched by `code`."])
+    info.append(["  • Persons: matched by `(employee_id, team)`. Rows without employee_id are always created as new."])
+    info.append(["  • SubProjects: matched by `(project_code, name)`."])
+    info.append([])
     info.append(["• Rows are never deleted by import — set `active` to FALSE to retire."])
-    info.append(["• Persons.team: ONE team name per row. A person who belongs to multiple teams must have one row per team (employee_id may repeat)."])
+    info.append(["• To rename a Team (`name`) or a Project (`code`), use the Configuration UI — editing them here would create a new row instead."])
+    info.append(["• Persons.team: ONE team name per row. A person who belongs to multiple teams must have one row per team (employee_id repeats)."])
     info.append(["• Projects do NOT have a teams column — every team can pick from any project."])
     info.append(["• Persons.allocation: number 0–100 (FTE percent for that team)."])
     info.append(["• Persons.employment_type: Permanent | Contractor | Intern."])
-    info.append(["• SubProjects.project_code: must reference an existing Projects.code."])
+    info.append(["• SubProjects.project_code: must reference an existing Projects.code (or one being created in this same upload)."])
     info.append(["• Booleans accept TRUE/FALSE/1/0 (case-insensitive)."])
-    info.column_dimensions["A"].width = 100
+    info.column_dimensions["A"].width = 110
 
     return wb
 
@@ -222,33 +239,32 @@ async def import_template(
     errors: list[ImportError_] = []
     summary = ImportSummary()
 
-    # --- Teams ---
+    # ---------------- Teams ----------------
+    team_by_name_existing: dict[str, models.Team] = {
+        t.name.lower(): t for t in db.query(models.Team).all()
+    }
     team_rows = _read_sheet(wb, "Teams")
     pending_teams: list[tuple[dict[str, Any], models.Team | None]] = []
+    seen_team_names: set[str] = set()
     for rec in team_rows:
         row_no = rec["_row"]
         name = rec.get("name")
         if not name:
             errors.append(ImportError_(sheet="Teams", row=row_no, message="`name` is required"))
             continue
-        team_existing: models.Team | None = None
-        if rec.get("id"):
-            team_existing = db.query(models.Team).filter_by(id=rec["id"]).first()
-            if not team_existing:
-                errors.append(ImportError_(sheet="Teams", row=row_no, message=f"id {rec['id']!r} not found"))
-                continue
-        else:
-            if db.query(models.Team).filter_by(name=name).first():
-                errors.append(ImportError_(sheet="Teams", row=row_no, message=f"team name {name!r} already exists"))
-                continue
-        pending_teams.append((rec, team_existing))
+        nlow = name.lower()
+        if nlow in seen_team_names:
+            errors.append(ImportError_(sheet="Teams", row=row_no, message=f"duplicate team name {name!r} in sheet"))
+            continue
+        seen_team_names.add(nlow)
+        pending_teams.append((rec, team_by_name_existing.get(nlow)))
 
     pending_team_names = {(r.get("name") or "").lower() for r, ex in pending_teams if not ex}
-    team_by_name_existing: dict[str, models.Team] = {
-        t.name.lower(): t for t in db.query(models.Team).all()
-    }
 
-    # --- Projects ---
+    # ---------------- Projects ----------------
+    project_by_code_existing: dict[str, models.Project] = {
+        p.code: p for p in db.query(models.Project).all()
+    }
     project_rows = _read_sheet(wb, "Projects")
     pending_projects: list[tuple[dict[str, Any], models.Project | None]] = []
     seen_codes: set[str] = set()
@@ -260,25 +276,22 @@ async def import_template(
             errors.append(ImportError_(sheet="Projects", row=row_no, message="`code` and `name` are required"))
             continue
         if code in seen_codes:
-            errors.append(ImportError_(sheet="Projects", row=row_no, message=f"duplicate code {code!r}"))
+            errors.append(ImportError_(sheet="Projects", row=row_no, message=f"duplicate code {code!r} in sheet"))
             continue
         seen_codes.add(code)
-        proj_existing: models.Project | None = None
-        if rec.get("id"):
-            proj_existing = db.query(models.Project).filter_by(id=rec["id"]).first()
-            if not proj_existing:
-                errors.append(ImportError_(sheet="Projects", row=row_no, message=f"id {rec['id']!r} not found"))
-                continue
-        else:
-            if db.query(models.Project).filter_by(code=code).first():
-                errors.append(ImportError_(sheet="Projects", row=row_no, message=f"project code {code!r} already exists"))
-                continue
-        pending_projects.append((rec, proj_existing))
+        pending_projects.append((rec, project_by_code_existing.get(code)))
 
-    # --- Persons ---
+    pending_project_codes = {(r.get("code") or "") for r, ex in pending_projects if not ex}
+
+    # ---------------- Persons ----------------
+    # Existing rows indexed by (employee_id, team_id) — only those WITH employee_id are matchable.
+    existing_persons_by_emp_team: dict[tuple[str, str], models.Person] = {}
+    for p in db.query(models.Person).filter(models.Person.employee_id.isnot(None)).all():
+        existing_persons_by_emp_team[(p.employee_id, p.team_id)] = p  # type: ignore[index]
+
     person_rows = _read_sheet(wb, "Persons")
     pending_persons: list[tuple[dict[str, Any], models.Person | None, str]] = []
-    seen_emp_team: set[tuple[str, str]] = set()
+    seen_emp_team_in_sheet: set[tuple[str, str]] = set()
     for rec in person_rows:
         row_no = rec["_row"]
         name = rec.get("name")
@@ -296,11 +309,11 @@ async def import_template(
 
         emp_id = rec.get("employee_id")
         if emp_id:
-            key = (emp_id, tlow)
-            if key in seen_emp_team:
-                errors.append(ImportError_(sheet="Persons", row=row_no, message=f"duplicate row for employee {emp_id!r} in team {team_name!r}"))
+            key = (str(emp_id), tlow)
+            if key in seen_emp_team_in_sheet:
+                errors.append(ImportError_(sheet="Persons", row=row_no, message=f"duplicate row for employee_id {emp_id!r} in team {team_name!r}"))
                 continue
-            seen_emp_team.add(key)
+            seen_emp_team_in_sheet.add(key)
 
         emp_type = rec.get("employment_type")
         if emp_type and emp_type not in EMPLOYMENT_TYPES:
@@ -313,22 +326,26 @@ async def import_template(
                 errors.append(ImportError_(sheet="Persons", row=row_no, message="allocation must be a number between 0 and 100"))
                 continue
 
+        # Match existing only when emp_id is provided AND team already exists
         person_existing: models.Person | None = None
-        if rec.get("id"):
-            person_existing = db.query(models.Person).filter_by(id=rec["id"]).first()
-            if not person_existing:
-                errors.append(ImportError_(sheet="Persons", row=row_no, message=f"id {rec['id']!r} not found"))
-                continue
+        if emp_id and tlow in team_by_name_existing:
+            existing_team = team_by_name_existing[tlow]
+            person_existing = existing_persons_by_emp_team.get((str(emp_id), existing_team.id))
         pending_persons.append((rec, person_existing, team_name))
 
-    # --- SubProjects ---
-    project_by_code: dict[str, models.Project] = {
-        p.code: p for p in db.query(models.Project).all()
-    }
-    pending_project_codes = {(r.get("code") or "") for r, ex in pending_projects if not ex}
+    # ---------------- SubProjects ----------------
+    # Existing rows indexed by (project_code, name.lower())
+    existing_subs: dict[tuple[str, str], models.SubProject] = {}
+    for sp, pr in (
+        db.query(models.SubProject, models.Project)
+        .join(models.Project, models.Project.id == models.SubProject.project_id)
+        .all()
+    ):
+        existing_subs[(pr.code, sp.name.lower())] = sp
 
     sp_rows = _read_sheet(wb, "SubProjects")
     pending_sps: list[tuple[dict[str, Any], models.SubProject | None]] = []
+    seen_sp_keys: set[tuple[str, str]] = set()
     for rec in sp_rows:
         row_no = rec["_row"]
         name = rec.get("name")
@@ -336,16 +353,15 @@ async def import_template(
         if not name or not pcode:
             errors.append(ImportError_(sheet="SubProjects", row=row_no, message="`name` and `project_code` are required"))
             continue
-        if pcode not in project_by_code and pcode not in pending_project_codes:
+        if pcode not in project_by_code_existing and pcode not in pending_project_codes:
             errors.append(ImportError_(sheet="SubProjects", row=row_no, message=f"unknown project_code {pcode!r}"))
             continue
-        sp_existing: models.SubProject | None = None
-        if rec.get("id"):
-            sp_existing = db.query(models.SubProject).filter_by(id=rec["id"]).first()
-            if not sp_existing:
-                errors.append(ImportError_(sheet="SubProjects", row=row_no, message=f"id {rec['id']!r} not found"))
-                continue
-        pending_sps.append((rec, sp_existing))
+        key = (pcode, name.lower())
+        if key in seen_sp_keys:
+            errors.append(ImportError_(sheet="SubProjects", row=row_no, message=f"duplicate sub-project {name!r} under project {pcode!r} in sheet"))
+            continue
+        seen_sp_keys.add(key)
+        pending_sps.append((rec, existing_subs.get(key)))
 
     if errors:
         return ImportResult(ok=False, errors=errors, summary=summary)
@@ -353,13 +369,12 @@ async def import_template(
     if dry_run:
         return ImportResult(ok=True, errors=[], summary=summary)
 
-    # ---- Apply ----
+    # ---------------- Apply ----------------
     team_by_name: dict[str, models.Team] = dict(team_by_name_existing)
 
     for rec, team_existing in pending_teams:
         active = _parse_bool(rec.get("active"))
         if team_existing:
-            team_existing.name = rec["name"]
             team_existing.description = rec.get("description")
             team_existing.manager = rec.get("manager")
             if active is not None:
@@ -377,10 +392,10 @@ async def import_template(
             summary.teams_created += 1
     db.flush()
 
+    project_by_code: dict[str, models.Project] = dict(project_by_code_existing)
     for rec, proj_existing in pending_projects:
         active = _parse_bool(rec.get("active"))
         if proj_existing:
-            proj_existing.code = rec["code"]
             proj_existing.name = rec["name"]
             proj_existing.description = rec.get("description")
             proj_existing.funding = rec.get("funding")
@@ -437,10 +452,8 @@ async def import_template(
         active = _parse_bool(rec.get("active"))
         project = project_by_code[rec["project_code"]]
         if sp_existing:
-            sp_existing.name = rec["name"]
             sp_existing.description = rec.get("description")
             sp_existing.funding = rec.get("funding")
-            sp_existing.project_id = project.id
             if active is not None:
                 sp_existing.active = active
             summary.sub_projects_updated += 1
