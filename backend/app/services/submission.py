@@ -38,6 +38,7 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
         )
 
     month_date = _parse_month(payload.month)
+    team_project_ids = {p.id for p in team.projects}
 
     seen: set[tuple[str, str]] = set()
     total = Decimal("0")
@@ -66,6 +67,11 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, f"Project {line.project_id} not found"
             )
+        if project.id not in team_project_ids:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Project '{project.name}' is not assigned to team '{team.name}'",
+            )
         total += Decimal(str(line.time_spent_pct))
 
     if abs(total - TARGET_TOTAL) > PCT_TOLERANCE:
@@ -77,6 +83,7 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     submission = db.scalar(
         select(models.Submission).where(
             models.Submission.person_id == person.id,
+            models.Submission.team_id == team.id,
             models.Submission.month == month_date,
         )
     )
@@ -91,7 +98,6 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
         db.add(submission)
         db.flush()
     else:
-        submission.team_id = team.id
         submission.total_percent = total
         submission.status = "submitted"
         for old in list(submission.lines):
@@ -119,8 +125,8 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     return submission
 
 
-def get_submission_by_person_month(
-    db: Session, person_id: str, month: str
+def get_submission_by_person_team_month(
+    db: Session, person_id: str, team_id: str, month: str
 ) -> models.Submission | None:
     month_date = _parse_month(month)
     return db.scalar(
@@ -128,6 +134,7 @@ def get_submission_by_person_month(
         .options(selectinload(models.Submission.lines))
         .where(
             models.Submission.person_id == person_id,
+            models.Submission.team_id == team_id,
             models.Submission.month == month_date,
         )
     )

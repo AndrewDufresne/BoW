@@ -43,16 +43,29 @@ person_team = Table(
 )
 
 
+# Association table: a project can be worked on by many teams.
+project_team = Table(
+    "project_team",
+    Base.metadata,
+    Column("project_id", String(36), ForeignKey("project.id", ondelete="CASCADE"), primary_key=True),
+    Column("team_id", String(36), ForeignKey("team.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class Team(Base, TimestampMixin):
     __tablename__ = "team"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    manager: Mapped[str | None] = mapped_column(String(120))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     members: Mapped[list[Person]] = relationship(
         secondary=person_team, back_populates="teams"
+    )
+    projects: Mapped[list[Project]] = relationship(
+        secondary=project_team, back_populates="teams"
     )
 
 
@@ -60,8 +73,16 @@ class Person(Base, TimestampMixin):
     __tablename__ = "person"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    employee_id: Mapped[str | None] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), unique=True)
+    location: Mapped[str | None] = mapped_column(String(100))
+    line_manager: Mapped[str | None] = mapped_column(String(120))
+    allocation: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("100"), nullable=False
+    )
+    employment_type: Mapped[str] = mapped_column(String(20), default="Permanent", nullable=False)
+    funding: Mapped[str | None] = mapped_column(String(120))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     teams: Mapped[list[Team]] = relationship(
@@ -76,10 +97,14 @@ class Project(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    funding: Mapped[str | None] = mapped_column(String(120))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     sub_projects: Mapped[list[SubProject]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
+    )
+    teams: Mapped[list[Team]] = relationship(
+        secondary=project_team, back_populates="projects"
     )
 
 
@@ -92,6 +117,8 @@ class SubProject(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("project.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    funding: Mapped[str | None] = mapped_column(String(120))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="sub_projects")
@@ -100,7 +127,7 @@ class SubProject(Base, TimestampMixin):
 class Submission(Base, TimestampMixin):
     __tablename__ = "submission"
     __table_args__ = (
-        UniqueConstraint("person_id", "month", name="uq_submission_person_month"),
+        UniqueConstraint("person_id", "team_id", "month", name="uq_submission_person_team_month"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

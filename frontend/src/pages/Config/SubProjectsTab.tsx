@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
-import { Field, Input, Select } from "@/components/Form";
+import { Field, Input, Select, Textarea } from "@/components/Form";
 import { useSubProjects, useSubProjectMutations, useProjects } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
@@ -11,6 +11,8 @@ import type { SubProject } from "@/api/types";
 interface FormState {
   project_id: string;
   name: string;
+  description: string;
+  funding: string;
 }
 
 export default function SubProjectsTab() {
@@ -23,7 +25,7 @@ export default function SubProjectsTab() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<SubProject | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState<FormState>({ project_id: "", name: "" });
+  const [form, setForm] = useState<FormState>({ project_id: "", name: "", description: "", funding: "" });
   const [confirm, setConfirm] = useState<SubProject | null>(null);
 
   const filtered = (data ?? []).filter((a) => {
@@ -35,22 +37,38 @@ export default function SubProjectsTab() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ project_id: projectFilter || "", name: "" });
+    setForm({ project_id: projectFilter || "", name: "", description: "", funding: "" });
     setDrawerOpen(true);
   };
   const openEdit = (a: SubProject) => {
     setEditing(a);
-    setForm({ project_id: a.project_id, name: a.name });
+    setForm({
+      project_id: a.project_id,
+      name: a.name,
+      description: a.description ?? "",
+      funding: a.funding ?? "",
+    });
     setDrawerOpen(true);
   };
 
   const onSave = async () => {
+    const payload = {
+      project_id: form.project_id,
+      name: form.name,
+      description: form.description || null,
+      funding: form.funding || null,
+    };
     try {
       if (editing) {
-        await m.update.mutateAsync({ id: editing.id, name: form.name });
+        await m.update.mutateAsync({
+          id: editing.id,
+          name: form.name,
+          description: form.description || null,
+          funding: form.funding || null,
+        });
         toast.success("Sub-project updated");
       } else {
-        await m.create.mutateAsync(form);
+        await m.create.mutateAsync(payload);
         toast.success("Sub-project created");
       }
       setDrawerOpen(false);
@@ -99,20 +117,26 @@ export default function SubProjectsTab() {
             <tr>
               <th>Name</th>
               <th>Project</th>
+              <th>Funding</th>
+              <th>Description</th>
               <th>Status</th>
               <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={4} className="text-ink-600">Loading…</td></tr>
+              <tr><td colSpan={6} className="text-ink-600">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} className="text-ink-600">No sub-projects.</td></tr>
+              <tr><td colSpan={6} className="text-ink-600">No sub-projects.</td></tr>
             ) : (
               filtered.map((a) => (
                 <tr key={a.id}>
                   <td className="font-medium text-ink-900">{a.name}</td>
                   <td className="text-ink-600">{a.project_name}</td>
+                  <td className="text-ink-600">{a.funding || "—"}</td>
+                  <td className="text-ink-600 max-w-xs truncate" title={a.description ?? ""}>
+                    {a.description || "—"}
+                  </td>
                   <td>
                     <span className={a.active ? "tag tag-success" : "tag tag-neutral"}>
                       {a.active ? "Active" : "Inactive"}
@@ -165,6 +189,20 @@ export default function SubProjectsTab() {
           </Field>
           <Field label="Name" required>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="Description">
+            <Textarea
+              rows={3}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+          </Field>
+          <Field label="Funding">
+            <Input
+              value={form.funding}
+              onChange={(e) => setForm({ ...form, funding: e.target.value })}
+              placeholder="CC-12345"
+            />
           </Field>
         </div>
       </Drawer>

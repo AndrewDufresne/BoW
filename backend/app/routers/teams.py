@@ -29,6 +29,7 @@ def _to_read(team: models.Team, member_count: int) -> schemas.TeamRead:
         id=team.id,
         name=team.name,
         description=team.description,
+        manager=team.manager,
         active=team.active,
         member_count=member_count,
     )

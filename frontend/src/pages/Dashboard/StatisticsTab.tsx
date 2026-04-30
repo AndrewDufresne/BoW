@@ -7,6 +7,7 @@ import {
   useTeams,
   type DashboardFilters,
 } from "@/api/hooks";
+import { TeamSubmissionProgressCard } from "./TeamSubmissionProgressCard";
 
 function currentMonth(): string {
   const d = new Date();
@@ -30,7 +31,9 @@ export default function StatisticsTab() {
   const total = data?.length ?? 0;
 
   return (
-    <Card
+    <>
+      <TeamSubmissionProgressCard month={filters.month} />
+      <Card
       bodyClassName="p-0"
       title="Submission Statistics"
       actions={
@@ -143,5 +146,6 @@ export default function StatisticsTab() {
         </tbody>
       </table>
     </Card>
+    </>
   );
 }

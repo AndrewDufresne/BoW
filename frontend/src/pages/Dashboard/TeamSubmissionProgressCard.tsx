@@ -5,7 +5,7 @@ interface Props {
   month: string;
 }
 
-export function TeamProgressCard({ month }: Props) {
+export function TeamSubmissionProgressCard({ month }: Props) {
   const q = useTeamProgress(month);
   const data = q.data ?? [];
 
@@ -15,7 +15,7 @@ export function TeamProgressCard({ month }: Props) {
 
   return (
     <Card
-      title={`Team Progress — ${month}`}
+      title={`Team Submission Progress — ${month}`}
       actions={
         <span className="text-sm text-ink-600 font-mono">
           {totalSubmitted}/{totalActive} ({overall.toFixed(0)}%)
@@ -35,7 +35,10 @@ export function TeamProgressCard({ month }: Props) {
               pct >= 100 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-danger";
             return (
               <div key={t.team_id} className="grid grid-cols-12 items-center gap-3">
-                <div className="col-span-3 text-sm text-ink-900 truncate" title={t.team_name}>
+                <div
+                  className="col-span-3 text-sm text-ink-900 truncate"
+                  title={t.team_name}
+                >
                   {t.team_name}
                 </div>
                 <div className="col-span-7">

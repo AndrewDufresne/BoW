@@ -15,6 +15,8 @@ def _to_read(s: models.SubProject) -> schemas.SubProjectRead:
         id=s.id,
         project_id=s.project_id,
         name=s.name,
+        description=s.description,
+        funding=s.funding,
         active=s.active,
         project_name=s.project.name if s.project else None,
     )

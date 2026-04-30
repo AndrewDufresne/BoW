@@ -11,6 +11,7 @@ import type { Team } from "@/api/types";
 interface FormState {
   name: string;
   description: string;
+  manager: string;
 }
 
 export default function TeamsTab() {
@@ -21,7 +22,7 @@ export default function TeamsTab() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<Team | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState<FormState>({ name: "", description: "" });
+  const [form, setForm] = useState<FormState>({ name: "", description: "", manager: "" });
   const [confirm, setConfirm] = useState<Team | null>(null);
 
   const filtered = (data ?? []).filter((t) => {
@@ -33,22 +34,27 @@ export default function TeamsTab() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", description: "" });
+    setForm({ name: "", description: "", manager: "" });
     setDrawerOpen(true);
   };
   const openEdit = (t: Team) => {
     setEditing(t);
-    setForm({ name: t.name, description: t.description ?? "" });
+    setForm({ name: t.name, description: t.description ?? "", manager: t.manager ?? "" });
     setDrawerOpen(true);
   };
 
   const onSave = async () => {
+    const payload = {
+      name: form.name,
+      description: form.description || null,
+      manager: form.manager || null,
+    };
     try {
       if (editing) {
-        await m.update.mutateAsync({ id: editing.id, ...form });
+        await m.update.mutateAsync({ id: editing.id, ...payload });
         toast.success("Team updated");
       } else {
-        await m.create.mutateAsync(form);
+        await m.create.mutateAsync(payload);
         toast.success("Team created");
       }
       setDrawerOpen(false);
@@ -97,6 +103,7 @@ export default function TeamsTab() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Manager</th>
               <th>Members</th>
               <th>Description</th>
               <th>Status</th>
@@ -105,13 +112,14 @@ export default function TeamsTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="text-ink-600">Loading…</td></tr>
+              <tr><td colSpan={6} className="text-ink-600">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-ink-600">No teams.</td></tr>
+              <tr><td colSpan={6} className="text-ink-600">No teams.</td></tr>
             ) : (
               filtered.map((t) => (
                 <tr key={t.id}>
                   <td className="font-medium text-ink-900">{t.name}</td>
+                  <td className="text-ink-700">{t.manager || "—"}</td>
                   <td className="font-mono">{t.member_count}</td>
                   <td className="text-ink-600">{t.description || "—"}</td>
                   <td>
@@ -156,6 +164,13 @@ export default function TeamsTab() {
         <div className="space-y-4">
           <Field label="Name" required>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="Manager">
+            <Input
+              value={form.manager}
+              onChange={(e) => setForm({ ...form, manager: e.target.value })}
+              placeholder="Manager name"
+            />
           </Field>
           <Field label="Description">
             <Textarea

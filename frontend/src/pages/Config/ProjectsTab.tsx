@@ -3,7 +3,7 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
 import { Field, Input, Textarea } from "@/components/Form";
-import { useProjectMutations, useProjects } from "@/api/hooks";
+import { useProjectMutations, useProjects, useTeams } from "@/api/hooks";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
 import type { Project } from "@/api/types";
@@ -12,17 +12,28 @@ interface FormState {
   code: string;
   name: string;
   description: string;
+  funding: string;
+  team_ids: string[];
 }
+
+const emptyForm = (): FormState => ({
+  code: "",
+  name: "",
+  description: "",
+  funding: "",
+  team_ids: [],
+});
 
 export default function ProjectsTab() {
   const { data, isLoading } = useProjects();
+  const teams = useTeams(true);
   const m = useProjectMutations();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<Project | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState<FormState>({ code: "", name: "", description: "" });
+  const [form, setForm] = useState<FormState>(emptyForm());
   const [confirm, setConfirm] = useState<Project | null>(null);
 
   const filtered = (data ?? []).filter((p) => {
@@ -37,22 +48,43 @@ export default function ProjectsTab() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ code: "", name: "", description: "" });
+    setForm(emptyForm());
     setDrawerOpen(true);
   };
   const openEdit = (p: Project) => {
     setEditing(p);
-    setForm({ code: p.code, name: p.name, description: p.description ?? "" });
+    setForm({
+      code: p.code,
+      name: p.name,
+      description: p.description ?? "",
+      funding: p.funding ?? "",
+      team_ids: p.team_ids ?? p.teams?.map((t) => t.id) ?? [],
+    });
     setDrawerOpen(true);
   };
 
+  const toggleTeam = (id: string) => {
+    setForm((f) =>
+      f.team_ids.includes(id)
+        ? { ...f, team_ids: f.team_ids.filter((x) => x !== id) }
+        : { ...f, team_ids: [...f.team_ids, id] },
+    );
+  };
+
   const onSave = async () => {
+    const payload = {
+      code: form.code,
+      name: form.name,
+      description: form.description || null,
+      funding: form.funding || null,
+      team_ids: form.team_ids,
+    };
     try {
       if (editing) {
-        await m.update.mutateAsync({ id: editing.id, ...form });
+        await m.update.mutateAsync({ id: editing.id, ...payload });
         toast.success("Project updated");
       } else {
-        await m.create.mutateAsync(form);
+        await m.create.mutateAsync(payload);
         toast.success("Project created");
       }
       setDrawerOpen(false);
@@ -91,6 +123,8 @@ export default function ProjectsTab() {
             <tr>
               <th>Code</th>
               <th>Name</th>
+              <th>Funding</th>
+              <th>Teams</th>
               <th>Sub-projects</th>
               <th>Status</th>
               <th className="text-right">Actions</th>
@@ -98,14 +132,18 @@ export default function ProjectsTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="text-ink-600">Loading…</td></tr>
+              <tr><td colSpan={7} className="text-ink-600">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-ink-600">No projects.</td></tr>
+              <tr><td colSpan={7} className="text-ink-600">No projects.</td></tr>
             ) : (
               filtered.map((p) => (
                 <tr key={p.id}>
                   <td className="font-mono text-ink-900">{p.code}</td>
                   <td className="font-medium">{p.name}</td>
+                  <td className="text-ink-600">{p.funding || "—"}</td>
+                  <td className="text-ink-700">
+                    {p.teams?.length ? p.teams.map((t) => t.name).join(", ") : "—"}
+                  </td>
                   <td className="font-mono">{p.sub_project_count}</td>
                   <td>
                     <span className={p.active ? "tag tag-success" : "tag tag-neutral"}>
@@ -163,10 +201,38 @@ export default function ProjectsTab() {
           </Field>
           <Field label="Description">
             <Textarea
-              rows={4}
+              rows={3}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
+          </Field>
+          <Field label="Funding">
+            <Input
+              value={form.funding}
+              onChange={(e) => setForm({ ...form, funding: e.target.value })}
+              placeholder="CC-12345"
+            />
+          </Field>
+          <Field label="Teams">
+            <div className="border border-ink-300 rounded p-3 max-h-48 overflow-y-auto space-y-2">
+              {teams.data?.length ? (
+                teams.data.map((t) => (
+                  <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.team_ids.includes(t.id)}
+                      onChange={() => toggleTeam(t.id)}
+                    />
+                    <span className="text-sm text-ink-900">{t.name}</span>
+                  </label>
+                ))
+              ) : (
+                <span className="text-sm text-ink-600">No teams available</span>
+              )}
+            </div>
+            <p className="text-xs text-ink-600 mt-1">
+              A project can be shared by multiple teams; each team will see it on their Submit card.
+            </p>
           </Field>
         </div>
       </Drawer>

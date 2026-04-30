@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
   DashboardSubmissionRow,
+  EmploymentType,
   Person,
   Project,
   SubProject,
@@ -9,6 +10,7 @@ import type {
   SubmissionLine,
   Team,
   TeamProgress,
+  TeamWithProjects,
 } from "./types";
 
 /* ---------- Teams ---------- */
@@ -59,8 +61,14 @@ export function usePersons(opts: { active?: boolean; teamId?: string } = {}) {
 }
 
 export interface PersonPayload {
+  employee_id?: string | null;
   name: string;
   email?: string | null;
+  location?: string | null;
+  line_manager?: string | null;
+  allocation?: number | string;
+  employment_type?: EmploymentType;
+  funding?: string | null;
   team_ids?: string[];
   active?: boolean;
 }
@@ -179,15 +187,30 @@ export function useSubProjectMutations() {
 }
 
 /* ---------- Submissions ---------- */
-export function useSubmissionByPersonMonth(personId?: string, month?: string) {
+export function useSubmissionByPersonTeamMonth(
+  personId?: string,
+  teamId?: string,
+  month?: string,
+) {
   return useQuery({
-    queryKey: ["submission", personId, month],
-    enabled: !!personId && !!month,
+    queryKey: ["submission", personId, teamId, month],
+    enabled: !!personId && !!teamId && !!month,
     queryFn: async () =>
       (
-        await api.get<Submission | null>("/submissions/by-person-month", {
-          params: { person_id: personId, month },
+        await api.get<Submission | null>("/submissions/by-person-team-month", {
+          params: { person_id: personId, team_id: teamId, month },
         })
+      ).data,
+  });
+}
+
+export function usePersonTeamsWithProjects(personId?: string) {
+  return useQuery({
+    queryKey: ["person-teams-with-projects", personId],
+    enabled: !!personId,
+    queryFn: async () =>
+      (
+        await api.get<TeamWithProjects[]>(`/persons/${personId}/teams-with-projects`)
       ).data,
   });
 }

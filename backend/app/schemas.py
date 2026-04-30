@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+EmploymentType = Literal["Permanent", "Contractor", "Intern"]
 
 
 # ---------- Base ----------
@@ -15,6 +19,7 @@ class ORMBase(BaseModel):
 class TeamBase(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = None
+    manager: str | None = Field(default=None, max_length=120)
 
 
 class TeamCreate(TeamBase):
@@ -24,6 +29,7 @@ class TeamCreate(TeamBase):
 class TeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
+    manager: str | None = Field(default=None, max_length=120)
     active: bool | None = None
 
 
@@ -40,8 +46,14 @@ class TeamMini(ORMBase):
 
 # ---------- Person ----------
 class PersonBase(BaseModel):
+    employee_id: str | None = Field(default=None, max_length=50)
     name: str = Field(min_length=1, max_length=100)
     email: EmailStr | None = None
+    location: str | None = Field(default=None, max_length=100)
+    line_manager: str | None = Field(default=None, max_length=120)
+    allocation: Decimal = Field(default=Decimal("100"), ge=0, le=100)
+    employment_type: EmploymentType = "Permanent"
+    funding: str | None = Field(default=None, max_length=120)
     team_ids: list[str] = Field(default_factory=list)
 
 
@@ -50,16 +62,28 @@ class PersonCreate(PersonBase):
 
 
 class PersonUpdate(BaseModel):
+    employee_id: str | None = Field(default=None, max_length=50)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     email: EmailStr | None = None
+    location: str | None = Field(default=None, max_length=100)
+    line_manager: str | None = Field(default=None, max_length=120)
+    allocation: Decimal | None = Field(default=None, ge=0, le=100)
+    employment_type: EmploymentType | None = None
+    funding: str | None = Field(default=None, max_length=120)
     team_ids: list[str] | None = None
     active: bool | None = None
 
 
 class PersonRead(ORMBase):
     id: str
+    employee_id: str | None = None
     name: str
     email: str | None = None
+    location: str | None = None
+    line_manager: str | None = None
+    allocation: Decimal
+    employment_type: str
+    funding: str | None = None
     active: bool
     team_ids: list[str] = Field(default_factory=list)
     teams: list[TeamMini] = Field(default_factory=list)
@@ -70,6 +94,8 @@ class ProjectBase(BaseModel):
     code: str = Field(min_length=2, max_length=20, pattern=r"^[A-Z0-9\-]+$")
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    funding: str | None = Field(default=None, max_length=120)
+    team_ids: list[str] = Field(default_factory=list)
 
 
 class ProjectCreate(ProjectBase):
@@ -80,19 +106,35 @@ class ProjectUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=2, max_length=20, pattern=r"^[A-Z0-9\-]+$")
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
+    funding: str | None = Field(default=None, max_length=120)
+    team_ids: list[str] | None = None
     active: bool | None = None
 
 
-class ProjectRead(ORMBase, ProjectBase):
+class ProjectRead(ORMBase):
     id: str
+    code: str
+    name: str
+    description: str | None = None
+    funding: str | None = None
     active: bool
     sub_project_count: int = 0
+    team_ids: list[str] = Field(default_factory=list)
+    teams: list[TeamMini] = Field(default_factory=list)
+
+
+class ProjectMini(ORMBase):
+    id: str
+    code: str
+    name: str
 
 
 # ---------- Sub-project ----------
 class SubProjectBase(BaseModel):
     project_id: str
     name: str = Field(min_length=1, max_length=200)
+    description: str | None = None
+    funding: str | None = Field(default=None, max_length=120)
 
 
 class SubProjectCreate(SubProjectBase):
@@ -101,6 +143,8 @@ class SubProjectCreate(SubProjectBase):
 
 class SubProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    funding: str | None = Field(default=None, max_length=120)
     active: bool | None = None
 
 
@@ -108,6 +152,31 @@ class SubProjectRead(ORMBase, SubProjectBase):
     id: str
     active: bool
     project_name: str | None = None
+
+
+# ---------- Team-projects (Submit page) ----------
+class SubProjectMini(ORMBase):
+    id: str
+    name: str
+    description: str | None = None
+    funding: str | None = None
+
+
+class TeamProjectsProject(ORMBase):
+    id: str
+    code: str
+    name: str
+    description: str | None = None
+    funding: str | None = None
+    sub_projects: list[SubProjectMini] = Field(default_factory=list)
+
+
+class TeamWithProjects(ORMBase):
+    id: str
+    name: str
+    description: str | None = None
+    manager: str | None = None
+    projects: list[TeamProjectsProject] = Field(default_factory=list)
 
 
 # ---------- Submission ----------

@@ -48,13 +48,14 @@ def list_submissions(
     ]
 
 
-@router.get("/by-person-month", response_model=schemas.SubmissionRead | None)
-def get_by_person_month(
+@router.get("/by-person-team-month", response_model=schemas.SubmissionRead | None)
+def get_by_person_team_month(
     person_id: str,
+    team_id: str,
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
 ):
-    s = svc.get_submission_by_person_month(db, person_id, month)
+    s = svc.get_submission_by_person_team_month(db, person_id, team_id, month)
     return _to_read(s) if s else None
 
 

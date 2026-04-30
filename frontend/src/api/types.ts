@@ -2,6 +2,7 @@ export interface Team {
   id: string;
   name: string;
   description?: string | null;
+  manager?: string | null;
   active: boolean;
   member_count: number;
 }
@@ -11,10 +12,18 @@ export interface TeamMini {
   name: string;
 }
 
+export type EmploymentType = "Permanent" | "Contractor" | "Intern";
+
 export interface Person {
   id: string;
+  employee_id?: string | null;
   name: string;
   email?: string | null;
+  location?: string | null;
+  line_manager?: string | null;
+  allocation: number | string;
+  employment_type: EmploymentType;
+  funding?: string | null;
   active: boolean;
   team_ids: string[];
   teams: TeamMini[];
@@ -25,16 +34,45 @@ export interface Project {
   code: string;
   name: string;
   description?: string | null;
+  funding?: string | null;
   active: boolean;
   sub_project_count: number;
+  team_ids: string[];
+  teams: TeamMini[];
 }
 
 export interface SubProject {
   id: string;
   project_id: string;
   name: string;
+  description?: string | null;
+  funding?: string | null;
   active: boolean;
   project_name?: string | null;
+}
+
+export interface SubProjectMini {
+  id: string;
+  name: string;
+  description?: string | null;
+  funding?: string | null;
+}
+
+export interface TeamProjectsProject {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  funding?: string | null;
+  sub_projects: SubProjectMini[];
+}
+
+export interface TeamWithProjects {
+  id: string;
+  name: string;
+  description?: string | null;
+  manager?: string | null;
+  projects: TeamProjectsProject[];
 }
 
 export interface SubmissionLine {
