@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
-import { usePersons, usePersonTeamsWithProjects } from "@/api/hooks";
+import { usePersons, useProjectsWithSubs } from "@/api/hooks";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { Field, Input, Select } from "@/components/Form";
-import { TeamSubmitCard } from "./TeamSubmitCard";
+import { PersonSubmitCard } from "./TeamSubmitCard";
 
 function currentMonth(): string {
   const d = new Date();
@@ -15,25 +15,19 @@ function currentMonth(): string {
 
 export default function SubmitPage() {
   const persons = usePersons({ active: true });
+  const projects = useProjectsWithSubs();
   const [personId, setPersonId] = useState<string>("");
   const [month, setMonth] = useState<string>(currentMonth());
 
-  const teams = usePersonTeamsWithProjects(personId || undefined);
   const selectedPerson = persons.data?.find((p) => p.id === personId);
-
-  // Reset on person change handled implicitly via key prop on cards.
-  useEffect(() => {
-    // No-op: kept for any future side-effects on person change.
-  }, [personId]);
 
   return (
     <>
       <PageHeader
         title="Submit Book of Work"
-        subtitle="Allocate 100% of your time per team for the month."
+        subtitle="Allocate 100% of your time across projects for the month."
       />
 
-      {/* Resource card */}
       <Card title="Resource" className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Person" required>
@@ -47,6 +41,7 @@ export default function SubmitPage() {
                 <option key={p.id} value={p.id}>
                   {p.name}
                   {p.employee_id ? ` (${p.employee_id})` : ""}
+                  {p.team ? ` — ${p.team.name}` : ""}
                 </option>
               ))}
             </Select>
@@ -75,10 +70,7 @@ export default function SubmitPage() {
             />
             <Detail label="Employment Type" value={selectedPerson.employment_type} />
             <Detail label="Funding" value={selectedPerson.funding} />
-            <Detail
-              label="Teams"
-              value={selectedPerson.teams.map((t) => t.name).join(", ") || "—"}
-            />
+            <Detail label="Team" value={selectedPerson.team?.name ?? null} />
           </div>
         )}
       </Card>
@@ -87,35 +79,34 @@ export default function SubmitPage() {
         <Card>
           <EmptyState
             title="Select a person to begin"
-            description="Pick a person above. We'll show one Projects card per team they belong to."
+            description="Pick a person above. We'll show all available projects to allocate."
           />
         </Card>
-      ) : teams.isLoading ? (
+      ) : projects.isLoading ? (
         <Card>
-          <div className="text-sm text-ink-600">Loading teams…</div>
+          <div className="text-sm text-ink-600">Loading projects…</div>
         </Card>
-      ) : !teams.data || teams.data.length === 0 ? (
+      ) : !projects.data || projects.data.length === 0 ? (
         <Card>
           <EmptyState
-            title="No teams assigned"
-            description="This person isn't a member of any team. Add them in Configuration."
+            title="No projects available"
+            description="There are no active projects. Add some in Configuration."
             action={
-              <Link to="/config/persons">
+              <Link to="/config/projects">
                 <Button variant="secondary">Go to Configuration</Button>
               </Link>
             }
           />
         </Card>
       ) : (
-        teams.data.map((t) => (
-          <TeamSubmitCard
-            key={`${personId}-${t.id}-${month}`}
-            personId={personId}
-            personName={selectedPerson?.name ?? ""}
-            team={t}
-            month={month}
-          />
-        ))
+        <PersonSubmitCard
+          key={`${personId}-${month}`}
+          personId={personId}
+          personName={selectedPerson?.name ?? ""}
+          teamName={selectedPerson?.team?.name ?? ""}
+          projects={projects.data}
+          month={month}
+        />
       )}
     </>
   );

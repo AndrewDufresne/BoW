@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/persons", tags=["persons"])
 
 
 def _to_read(p: models.Person) -> schemas.PersonRead:
-    teams = sorted(p.teams, key=lambda t: t.name)
+    team = schemas.TeamMini(id=p.team.id, name=p.team.name) if p.team else None
     return schemas.PersonRead(
         id=p.id,
         employee_id=p.employee_id,
@@ -23,23 +23,16 @@ def _to_read(p: models.Person) -> schemas.PersonRead:
         employment_type=p.employment_type,
         funding=p.funding,
         active=p.active,
-        team_ids=[t.id for t in teams],
-        teams=[schemas.TeamMini(id=t.id, name=t.name) for t in teams],
+        team_id=p.team_id,
+        team=team,
     )
 
 
-def _resolve_teams(db: Session, team_ids: list[str]) -> list[models.Team]:
-    if not team_ids:
-        return []
-    teams = db.scalars(select(models.Team).where(models.Team.id.in_(team_ids))).all()
-    found_ids = {t.id for t in teams}
-    missing = [tid for tid in team_ids if tid not in found_ids]
-    if missing:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Team(s) not found: {', '.join(missing)}",
-        )
-    return list(teams)
+def _check_team(db: Session, team_id: str) -> models.Team:
+    team = db.get(models.Team, team_id)
+    if not team:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Team {team_id} not found")
+    return team
 
 
 @router.get("", response_model=list[schemas.PersonRead])
@@ -48,27 +41,29 @@ def list_persons(
     team_id: str | None = None,
     db: Session = Depends(get_db),
 ):
-    stmt = select(models.Person).options(selectinload(models.Person.teams))
+    stmt = select(models.Person).options(selectinload(models.Person.team))
     if active is not None:
         stmt = stmt.where(models.Person.active.is_(active))
     if team_id:
-        stmt = stmt.where(models.Person.teams.any(models.Team.id == team_id))
+        stmt = stmt.where(models.Person.team_id == team_id)
     stmt = stmt.order_by(models.Person.name)
-    return [_to_read(p) for p in db.scalars(stmt).unique().all()]
+    return [_to_read(p) for p in db.scalars(stmt).all()]
 
 
 @router.post("", response_model=schemas.PersonRead, status_code=status.HTTP_201_CREATED)
 def create_person(payload: schemas.PersonCreate, db: Session = Depends(get_db)):
-    if payload.email and db.scalar(select(models.Person).where(models.Person.email == payload.email)):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
+    _check_team(db, payload.team_id)
     if payload.employee_id and db.scalar(
-        select(models.Person).where(models.Person.employee_id == payload.employee_id)
+        select(models.Person).where(
+            models.Person.employee_id == payload.employee_id,
+            models.Person.team_id == payload.team_id,
+        )
     ):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Employee ID already exists")
-    teams = _resolve_teams(db, payload.team_ids)
-    data = payload.model_dump(exclude={"team_ids"})
-    p = models.Person(**data)
-    p.teams = teams
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This employee already has a row for this team",
+        )
+    p = models.Person(**payload.model_dump())
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -81,20 +76,22 @@ def update_person(person_id: str, payload: schemas.PersonUpdate, db: Session = D
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found")
     data = payload.model_dump(exclude_unset=True)
-    if "email" in data and data["email"] and data["email"] != p.email:
-        if db.scalar(select(models.Person).where(models.Person.email == data["email"])):
-            raise HTTPException(status.HTTP_409_CONFLICT, "Email already exists")
-    if (
-        "employee_id" in data
-        and data["employee_id"]
-        and data["employee_id"] != p.employee_id
-    ):
+    if "team_id" in data and data["team_id"]:
+        _check_team(db, data["team_id"])
+    new_team_id = data.get("team_id", p.team_id)
+    new_emp_id = data.get("employee_id", p.employee_id)
+    if (new_team_id != p.team_id or new_emp_id != p.employee_id) and new_emp_id:
         if db.scalar(
-            select(models.Person).where(models.Person.employee_id == data["employee_id"])
+            select(models.Person).where(
+                models.Person.employee_id == new_emp_id,
+                models.Person.team_id == new_team_id,
+                models.Person.id != p.id,
+            )
         ):
-            raise HTTPException(status.HTTP_409_CONFLICT, "Employee ID already exists")
-    if "team_ids" in data:
-        p.teams = _resolve_teams(db, data.pop("team_ids") or [])
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This employee already has a row for this team",
+            )
     for k, v in data.items():
         setattr(p, k, v)
     db.commit()
@@ -111,56 +108,3 @@ def deactivate_person(person_id: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(p)
     return _to_read(p)
-
-
-@router.get("/{person_id}/teams-with-projects", response_model=list[schemas.TeamWithProjects])
-def get_person_teams_with_projects(person_id: str, db: Session = Depends(get_db)):
-    person = db.scalar(
-        select(models.Person)
-        .options(
-            selectinload(models.Person.teams)
-            .selectinload(models.Team.projects)
-            .selectinload(models.Project.sub_projects)
-        )
-        .where(models.Person.id == person_id)
-    )
-    if not person:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found")
-    result: list[schemas.TeamWithProjects] = []
-    for team in sorted(person.teams, key=lambda t: t.name):
-        if not team.active:
-            continue
-        projects: list[schemas.TeamProjectsProject] = []
-        for project in sorted(team.projects, key=lambda p: p.code):
-            if not project.active:
-                continue
-            subs = [
-                schemas.SubProjectMini(
-                    id=s.id,
-                    name=s.name,
-                    description=s.description,
-                    funding=s.funding,
-                )
-                for s in sorted(project.sub_projects, key=lambda s: s.name)
-                if s.active
-            ]
-            projects.append(
-                schemas.TeamProjectsProject(
-                    id=project.id,
-                    code=project.code,
-                    name=project.name,
-                    description=project.description,
-                    funding=project.funding,
-                    sub_projects=subs,
-                )
-            )
-        result.append(
-            schemas.TeamWithProjects(
-                id=team.id,
-                name=team.name,
-                description=team.description,
-                manager=team.manager,
-                projects=projects,
-            )
-        )
-    return result

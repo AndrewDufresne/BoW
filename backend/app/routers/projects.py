@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -10,22 +10,7 @@ from app.core.db import get_db
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def _resolve_teams(db: Session, team_ids: list[str]) -> list[models.Team]:
-    if not team_ids:
-        return []
-    teams = db.scalars(select(models.Team).where(models.Team.id.in_(team_ids))).all()
-    found = {t.id for t in teams}
-    missing = [tid for tid in team_ids if tid not in found]
-    if missing:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Team(s) not found: {', '.join(missing)}",
-        )
-    return list(teams)
-
-
 def _to_read(p: models.Project, count: int) -> schemas.ProjectRead:
-    teams = sorted(p.teams, key=lambda t: t.name)
     return schemas.ProjectRead(
         id=p.id,
         code=p.code,
@@ -34,8 +19,6 @@ def _to_read(p: models.Project, count: int) -> schemas.ProjectRead:
         funding=p.funding,
         active=p.active,
         sub_project_count=count,
-        team_ids=[t.id for t in teams],
-        teams=[schemas.TeamMini(id=t.id, name=t.name) for t in teams],
     )
 
 
@@ -48,7 +31,6 @@ def list_projects(active: bool | None = None, db: Session = Depends(get_db)):
             (models.SubProject.project_id == models.Project.id)
             & (models.SubProject.active.is_(True)),
         )
-        .options(selectinload(models.Project.teams))
     )
     if active is not None:
         stmt = stmt.where(models.Project.active.is_(active))
@@ -56,14 +38,42 @@ def list_projects(active: bool | None = None, db: Session = Depends(get_db)):
     return [_to_read(p, c) for p, c in db.execute(stmt).all()]
 
 
+@router.get("/with-subs", response_model=list[schemas.ProjectWithSubs])
+def list_projects_with_subs(db: Session = Depends(get_db)):
+    """All active projects with their active sub-projects, used by the Submit page."""
+    stmt = (
+        select(models.Project)
+        .options(selectinload(models.Project.sub_projects))
+        .where(models.Project.active.is_(True))
+        .order_by(models.Project.code)
+    )
+    result: list[schemas.ProjectWithSubs] = []
+    for p in db.scalars(stmt).all():
+        subs = [
+            schemas.SubProjectMini(
+                id=s.id, name=s.name, description=s.description, funding=s.funding
+            )
+            for s in sorted(p.sub_projects, key=lambda s: s.name)
+            if s.active
+        ]
+        result.append(
+            schemas.ProjectWithSubs(
+                id=p.id,
+                code=p.code,
+                name=p.name,
+                description=p.description,
+                funding=p.funding,
+                sub_projects=subs,
+            )
+        )
+    return result
+
+
 @router.post("", response_model=schemas.ProjectRead, status_code=status.HTTP_201_CREATED)
 def create_project(payload: schemas.ProjectCreate, db: Session = Depends(get_db)):
     if db.scalar(select(models.Project).where(models.Project.code == payload.code)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Project code already exists")
-    teams = _resolve_teams(db, payload.team_ids)
-    data = payload.model_dump(exclude={"team_ids"})
-    p = models.Project(**data)
-    p.teams = teams
+    p = models.Project(**payload.model_dump())
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -79,8 +89,6 @@ def update_project(project_id: str, payload: schemas.ProjectUpdate, db: Session 
     if "code" in data and data["code"] != p.code:
         if db.scalar(select(models.Project).where(models.Project.code == data["code"])):
             raise HTTPException(status.HTTP_409_CONFLICT, "Project code already exists")
-    if "team_ids" in data:
-        p.teams = _resolve_teams(db, data.pop("team_ids") or [])
     for k, v in data.items():
         setattr(p, k, v)
     db.commit()

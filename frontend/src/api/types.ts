@@ -1,4 +1,4 @@
-export interface Team {
+﻿export interface Team {
   id: string;
   name: string;
   description?: string | null;
@@ -24,9 +24,9 @@ export interface Person {
   allocation: number | string;
   employment_type: EmploymentType;
   funding?: string | null;
+  team_id: string;
+  team?: TeamMini | null;
   active: boolean;
-  team_ids: string[];
-  teams: TeamMini[];
 }
 
 export interface Project {
@@ -37,8 +37,6 @@ export interface Project {
   funding?: string | null;
   active: boolean;
   sub_project_count: number;
-  team_ids: string[];
-  teams: TeamMini[];
 }
 
 export interface SubProject {
@@ -58,21 +56,13 @@ export interface SubProjectMini {
   funding?: string | null;
 }
 
-export interface TeamProjectsProject {
+export interface ProjectWithSubs {
   id: string;
   code: string;
   name: string;
   description?: string | null;
   funding?: string | null;
   sub_projects: SubProjectMini[];
-}
-
-export interface TeamWithProjects {
-  id: string;
-  name: string;
-  description?: string | null;
-  manager?: string | null;
-  projects: TeamProjectsProject[];
 }
 
 export interface SubmissionLine {
@@ -116,4 +106,3 @@ export interface DashboardSubmissionRow {
   total_percent: number | string | null;
   updated_at: string | null;
 }
-

@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmModal, Drawer } from "@/components/Drawer";
@@ -19,7 +19,7 @@ interface FormState {
   allocation: string;
   employment_type: EmploymentType;
   funding: string;
-  team_ids: string[];
+  team_id: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -31,7 +31,7 @@ const emptyForm = (): FormState => ({
   allocation: "100",
   employment_type: "Permanent",
   funding: "",
-  team_ids: [],
+  team_id: "",
 });
 
 export default function PersonsTab() {
@@ -76,22 +76,15 @@ export default function PersonsTab() {
       allocation: p.allocation != null ? String(p.allocation) : "100",
       employment_type: p.employment_type ?? "Permanent",
       funding: p.funding ?? "",
-      team_ids: p.team_ids ?? p.teams?.map((t) => t.id) ?? [],
+      team_id: p.team_id ?? p.team?.id ?? "",
     });
     setDrawerOpen(true);
-  };
-
-  const toggleTeam = (id: string) => {
-    setForm((f) =>
-      f.team_ids.includes(id)
-        ? { ...f, team_ids: f.team_ids.filter((x) => x !== id) }
-        : { ...f, team_ids: [...f.team_ids, id] },
-    );
   };
 
   const allocNum = parseFloat(form.allocation);
   const allocValid = !form.allocation || (!isNaN(allocNum) && allocNum >= 0 && allocNum <= 100);
   const emailValid = !form.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  const teamValid = !!form.team_id;
 
   const onSave = async () => {
     const payload = {
@@ -103,7 +96,7 @@ export default function PersonsTab() {
       allocation: form.allocation ? allocNum : 100,
       employment_type: form.employment_type,
       funding: form.funding || null,
-      team_ids: form.team_ids,
+      team_id: form.team_id,
     };
     try {
       if (editing) {
@@ -149,13 +142,13 @@ export default function PersonsTab() {
             <tr>
               <th>Employee ID</th>
               <th>Name</th>
+              <th>Team</th>
               <th>Email</th>
               <th>Location</th>
               <th>Line Manager</th>
               <th className="text-right">Allocation</th>
               <th>Type</th>
               <th>Funding</th>
-              <th>Teams</th>
               <th>Status</th>
               <th className="text-right">Actions</th>
             </tr>
@@ -170,6 +163,7 @@ export default function PersonsTab() {
                 <tr key={p.id}>
                   <td className="font-mono text-ink-700">{p.employee_id || "—"}</td>
                   <td className="font-medium text-ink-900">{p.name}</td>
+                  <td className="text-ink-700">{p.team?.name || "—"}</td>
                   <td className="text-ink-600">{p.email || "—"}</td>
                   <td className="text-ink-600">{p.location || "—"}</td>
                   <td className="text-ink-600">{p.line_manager || "—"}</td>
@@ -178,11 +172,6 @@ export default function PersonsTab() {
                   </td>
                   <td className="text-ink-700">{p.employment_type}</td>
                   <td className="text-ink-600">{p.funding || "—"}</td>
-                  <td>
-                    {p.teams && p.teams.length > 0
-                      ? p.teams.map((t) => t.name).join(", ")
-                      : "—"}
-                  </td>
                   <td>
                     <span className={p.active ? "tag tag-success" : "tag tag-neutral"}>
                       {p.active ? "Active" : "Inactive"}
@@ -217,7 +206,7 @@ export default function PersonsTab() {
         onClose={() => setDrawerOpen(false)}
         onSubmit={onSave}
         submitLabel={editing ? "Save" : "Create"}
-        submitDisabled={!form.name.trim() || !emailValid || !allocValid}
+        submitDisabled={!form.name.trim() || !emailValid || !allocValid || !teamValid}
         title={editing ? "Edit Person" : "New Person"}
       >
         <div className="space-y-4">
@@ -233,6 +222,21 @@ export default function PersonsTab() {
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
           </div>
+          <Field label="Team" required>
+            <Select
+              value={form.team_id}
+              onChange={(e) => setForm({ ...form, team_id: e.target.value })}
+              invalid={!teamValid}
+            >
+              <option value="">Select a team…</option>
+              {teams.data?.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </Select>
+            <p className="text-xs text-ink-600 mt-1">
+              One row per (person, team). To assign a person to multiple teams, create one row per team using the same Employee ID.
+            </p>
+          </Field>
           <Field label="Email" error={!emailValid ? "Invalid email format" : undefined}>
             <Input
               value={form.email}
@@ -289,27 +293,6 @@ export default function PersonsTab() {
               />
             </Field>
           </div>
-          <Field label="Teams">
-            <div className="border border-ink-300 rounded p-3 max-h-48 overflow-y-auto space-y-2">
-              {teams.data?.length ? (
-                teams.data.map((t) => (
-                  <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.team_ids.includes(t.id)}
-                      onChange={() => toggleTeam(t.id)}
-                    />
-                    <span className="text-sm text-ink-900">{t.name}</span>
-                  </label>
-                ))
-              ) : (
-                <span className="text-sm text-ink-600">No teams available</span>
-              )}
-            </div>
-            <p className="text-xs text-ink-600 mt-1">
-              A person can belong to multiple teams. They submit one card per team.
-            </p>
-          </Field>
         </div>
       </Drawer>
 

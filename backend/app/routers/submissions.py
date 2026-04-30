@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -11,15 +11,17 @@ router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 
 def _to_read(s: models.Submission) -> schemas.SubmissionRead:
+    person = s.person
+    team = person.team if person else None
     return schemas.SubmissionRead(
         id=s.id,
         person_id=s.person_id,
-        team_id=s.team_id,
+        team_id=team.id if team else "",
         month=s.month,
         status=s.status,
         total_percent=s.total_percent,
-        person_name=s.person.name if s.person else None,
-        team_name=s.team.name if s.team else None,
+        person_name=person.name if person else None,
+        team_name=team.name if team else None,
         lines=[
             schemas.SubmissionLineRead(
                 id=line.id,
@@ -48,14 +50,13 @@ def list_submissions(
     ]
 
 
-@router.get("/by-person-team-month", response_model=schemas.SubmissionRead | None)
-def get_by_person_team_month(
+@router.get("/by-person-month", response_model=schemas.SubmissionRead | None)
+def get_by_person_month(
     person_id: str,
-    team_id: str,
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
 ):
-    s = svc.get_submission_by_person_team_month(db, person_id, team_id, month)
+    s = svc.get_submission_by_person_month(db, person_id, month)
     return _to_read(s) if s else None
 
 

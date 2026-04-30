@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
-  useSubmissionByPersonTeamMonth,
+  useSubmissionByPersonMonth,
   useUpsertSubmission,
 } from "@/api/hooks";
 import { Card } from "@/components/Card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { Input, Select, Textarea } from "@/components/Form";
 import { toast } from "@/components/Toast";
 import { extractErrorMessage } from "@/api/client";
-import type { TeamWithProjects } from "@/api/types";
+import type { ProjectWithSubs } from "@/api/types";
 
 interface RowDraft {
   key: string;
@@ -30,17 +30,17 @@ const newRow = (): RowDraft => ({
 interface Props {
   personId: string;
   personName: string;
-  team: TeamWithProjects;
+  teamName: string;
+  projects: ProjectWithSubs[];
   month: string;
 }
 
-export function TeamSubmitCard({ personId, personName, team, month }: Props) {
-  const existing = useSubmissionByPersonTeamMonth(personId, team.id, month);
+export function PersonSubmitCard({ personId, personName, teamName, projects, month }: Props) {
+  const existing = useSubmissionByPersonMonth(personId, month);
   const upsert = useUpsertSubmission();
 
   const [rows, setRows] = useState<RowDraft[]>([newRow()]);
 
-  // Hydrate from existing submission
   useEffect(() => {
     if (existing.isFetching) return;
     if (existing.data && existing.data.lines.length > 0) {
@@ -57,13 +57,13 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
       setRows([newRow()]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personId, team.id, month, existing.dataUpdatedAt]);
+  }, [personId, month, existing.dataUpdatedAt]);
 
   const subProjectsByProject = useMemo(() => {
-    const m = new Map<string, TeamWithProjects["projects"][number]["sub_projects"]>();
-    team.projects.forEach((p) => m.set(p.id, p.sub_projects));
+    const m = new Map<string, ProjectWithSubs["sub_projects"]>();
+    projects.forEach((p) => m.set(p.id, p.sub_projects));
     return m;
-  }, [team]);
+  }, [projects]);
 
   const total = rows.reduce((s, r) => s + (parseFloat(r.time_spent_pct) || 0), 0);
   const totalOk = Math.abs(total - 100) < 0.01;
@@ -103,13 +103,12 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
     setRows((rs) => (rs.length === 1 ? rs : rs.filter((r) => r.key !== key)));
   const addRow = () => setRows((rs) => [...rs, newRow()]);
 
-  const noProjects = team.projects.length === 0;
+  const noProjects = projects.length === 0;
 
   const onSubmit = async () => {
     try {
       await upsert.mutateAsync({
         person_id: personId,
-        team_id: team.id,
         month,
         lines: rows.map((r) => ({
           project_id: r.project_id,
@@ -118,7 +117,7 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
           comments: r.comments || null,
         })),
       });
-      toast.success(`Saved ${personName} · ${team.name} · ${month}`);
+      toast.success(`Saved ${personName}${teamName ? " · " + teamName : ""} · ${month}`);
     } catch (err) {
       toast.error(extractErrorMessage(err));
     }
@@ -128,10 +127,10 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
 
   return (
     <Card
-      title={`${team.name} · Projects`}
+      title="Projects"
       actions={
         <span className="text-sm text-ink-600">
-          {team.manager ? <>Manager: {team.manager}</> : null}
+          {teamName ? <>Team: {teamName}</> : null}
           {submitted && (
             <span className="ml-3 tag tag-success">Submitted</span>
           )}
@@ -141,8 +140,7 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
     >
       {noProjects ? (
         <div className="text-sm text-ink-600">
-          No projects assigned to this team. Ask your admin to link projects in
-          Configuration.
+          No active projects. Add some in Configuration.
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -180,7 +178,7 @@ export function TeamSubmitCard({ personId, personName, team, month }: Props) {
                         invalid={!r.project_id}
                       >
                         <option value="">Select project…</option>
-                        {team.projects.map((p) => (
+                        {projects.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.code} · {p.name}
                           </option>

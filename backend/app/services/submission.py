@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
@@ -17,7 +17,7 @@ def _parse_month(month: str) -> date:
     try:
         year, m = month.split("-")
         return date(int(year), int(m), 1)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid month '{month}'") from exc
 
 
@@ -26,19 +26,7 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     if not person or not person.active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found or inactive")
 
-    team = db.get(models.Team, payload.team_id)
-    if not team or not team.active:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Team not found or inactive")
-
-    person_team_ids = {t.id for t in person.teams}
-    if team.id not in person_team_ids:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Person '{person.name}' is not a member of team '{team.name}'",
-        )
-
     month_date = _parse_month(payload.month)
-    team_project_ids = {p.id for p in team.projects}
 
     seen: set[tuple[str, str]] = set()
     total = Decimal("0")
@@ -67,11 +55,6 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, f"Project {line.project_id} not found"
             )
-        if project.id not in team_project_ids:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"Project '{project.name}' is not assigned to team '{team.name}'",
-            )
         total += Decimal(str(line.time_spent_pct))
 
     if abs(total - TARGET_TOTAL) > PCT_TOLERANCE:
@@ -83,14 +66,12 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     submission = db.scalar(
         select(models.Submission).where(
             models.Submission.person_id == person.id,
-            models.Submission.team_id == team.id,
             models.Submission.month == month_date,
         )
     )
     if submission is None:
         submission = models.Submission(
             person_id=person.id,
-            team_id=team.id,
             month=month_date,
             status="submitted",
             total_percent=total,
@@ -125,8 +106,8 @@ def upsert_submission(db: Session, payload: schemas.SubmissionUpsert) -> models.
     return submission
 
 
-def get_submission_by_person_team_month(
-    db: Session, person_id: str, team_id: str, month: str
+def get_submission_by_person_month(
+    db: Session, person_id: str, month: str
 ) -> models.Submission | None:
     month_date = _parse_month(month)
     return db.scalar(
@@ -134,7 +115,6 @@ def get_submission_by_person_team_month(
         .options(selectinload(models.Submission.lines))
         .where(
             models.Submission.person_id == person_id,
-            models.Submission.team_id == team_id,
             models.Submission.month == month_date,
         )
     )
@@ -147,12 +127,17 @@ def list_submissions(
     person_id: str | None = None,
     month: str | None = None,
 ) -> list[models.Submission]:
-    stmt = select(models.Submission).options(selectinload(models.Submission.lines))
-    if team_id:
-        stmt = stmt.where(models.Submission.team_id == team_id)
+    stmt = select(models.Submission).options(
+        selectinload(models.Submission.lines),
+        selectinload(models.Submission.person).selectinload(models.Person.team),
+    )
     if person_id:
         stmt = stmt.where(models.Submission.person_id == person_id)
     if month:
         stmt = stmt.where(models.Submission.month == _parse_month(month))
+    if team_id:
+        stmt = stmt.join(models.Person, models.Person.id == models.Submission.person_id).where(
+            models.Person.team_id == team_id
+        )
     stmt = stmt.order_by(models.Submission.month.desc())
     return list(db.scalars(stmt).all())

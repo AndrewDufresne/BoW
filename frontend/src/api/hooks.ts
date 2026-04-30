@@ -1,16 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
   DashboardSubmissionRow,
   EmploymentType,
   Person,
   Project,
+  ProjectWithSubs,
   SubProject,
   Submission,
   SubmissionLine,
   Team,
   TeamProgress,
-  TeamWithProjects,
 } from "./types";
 
 /* ---------- Teams ---------- */
@@ -69,7 +69,7 @@ export interface PersonPayload {
   allocation?: number | string;
   employment_type?: EmploymentType;
   funding?: string | null;
-  team_ids?: string[];
+  team_id: string;
   active?: boolean;
 }
 
@@ -107,10 +107,19 @@ export function useProjects(active?: boolean) {
   });
 }
 
+export function useProjectsWithSubs() {
+  return useQuery({
+    queryKey: ["projects-with-subs"],
+    queryFn: async () =>
+      (await api.get<ProjectWithSubs[]>("/projects/with-subs")).data,
+  });
+}
+
 export function useProjectMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["projects"] });
+    qc.invalidateQueries({ queryKey: ["projects-with-subs"] });
     qc.invalidateQueries({ queryKey: ["sub-projects"] });
   };
   return {
@@ -166,6 +175,7 @@ export function useSubProjectMutations() {
     qc.invalidateQueries({ queryKey: ["sub-projects"] });
     qc.invalidateQueries({ queryKey: ["project-sub-projects"] });
     qc.invalidateQueries({ queryKey: ["projects"] });
+    qc.invalidateQueries({ queryKey: ["projects-with-subs"] });
   };
   return {
     create: useMutation({
@@ -187,37 +197,21 @@ export function useSubProjectMutations() {
 }
 
 /* ---------- Submissions ---------- */
-export function useSubmissionByPersonTeamMonth(
-  personId?: string,
-  teamId?: string,
-  month?: string,
-) {
+export function useSubmissionByPersonMonth(personId?: string, month?: string) {
   return useQuery({
-    queryKey: ["submission", personId, teamId, month],
-    enabled: !!personId && !!teamId && !!month,
+    queryKey: ["submission", personId, month],
+    enabled: !!personId && !!month,
     queryFn: async () =>
       (
-        await api.get<Submission | null>("/submissions/by-person-team-month", {
-          params: { person_id: personId, team_id: teamId, month },
+        await api.get<Submission | null>("/submissions/by-person-month", {
+          params: { person_id: personId, month },
         })
-      ).data,
-  });
-}
-
-export function usePersonTeamsWithProjects(personId?: string) {
-  return useQuery({
-    queryKey: ["person-teams-with-projects", personId],
-    enabled: !!personId,
-    queryFn: async () =>
-      (
-        await api.get<TeamWithProjects[]>(`/persons/${personId}/teams-with-projects`)
       ).data,
   });
 }
 
 export interface SubmissionPayload {
   person_id: string;
-  team_id: string;
   month: string;
   lines: Pick<SubmissionLine, "project_id" | "sub_project_id" | "time_spent_pct" | "comments">[];
 }
@@ -267,4 +261,3 @@ export function useDashboardSubmissions(filters: DashboardFilters) {
       ).data,
   });
 }
-

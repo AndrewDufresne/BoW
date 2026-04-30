@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
@@ -16,7 +16,7 @@ def _parse_month(month: str) -> date:
     try:
         year, m = month.split("-")
         return date(int(year), int(m), 1)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid month '{month}'"
         ) from exc
@@ -27,9 +27,8 @@ def team_progress(
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
 ):
-    """For each active team, return active member count and the number of
-    members who have submitted a Book of Work for the given month against that
-    team. A person submitted under team A doesn't count toward team B."""
+    """For each active team, return active person-row count and the number of
+    rows that have submitted for the given month."""
     month_date = _parse_month(month)
 
     teams = list(
@@ -40,16 +39,14 @@ def team_progress(
 
     result: list[schemas.TeamProgress] = []
     for team in teams:
-        # active members of this team
-        member_ids_stmt = (
-            select(models.Person.id)
-            .join(models.person_team, models.person_team.c.person_id == models.Person.id)
-            .where(
-                models.person_team.c.team_id == team.id,
-                models.Person.active.is_(True),
-            )
+        member_ids = list(
+            db.scalars(
+                select(models.Person.id).where(
+                    models.Person.team_id == team.id,
+                    models.Person.active.is_(True),
+                )
+            ).all()
         )
-        member_ids = list(db.scalars(member_ids_stmt).all())
         total_active = len(member_ids)
 
         if total_active == 0:
@@ -58,7 +55,6 @@ def team_progress(
             submitted = (
                 db.scalar(
                     select(func.count(func.distinct(models.Submission.person_id))).where(
-                        models.Submission.team_id == team.id,
                         models.Submission.month == month_date,
                         models.Submission.status == "submitted",
                         models.Submission.person_id.in_(member_ids),
@@ -89,16 +85,13 @@ def list_dashboard_submissions(
     completion: str | None = Query(
         default=None,
         pattern=r"^(submitted|missing|all)$",
-        description="Filter by completion status",
     ),
     db: Session = Depends(get_db),
 ):
-    """Return one row per (active person, team) pair for the month, including
-    'missing' rows for members who haven't submitted yet (under that team).
-    Optionally filtered by team, project, or completion status."""
+    """Return one row per active Person row for the month. Each Person row is
+    already team-scoped, so we don't need to join an association table."""
     month_date = _parse_month(month)
 
-    # Build (person, team) pairs from membership
     pair_stmt = (
         select(
             models.Person.id,
@@ -106,8 +99,7 @@ def list_dashboard_submissions(
             models.Team.id,
             models.Team.name,
         )
-        .join(models.person_team, models.person_team.c.person_id == models.Person.id)
-        .join(models.Team, models.Team.id == models.person_team.c.team_id)
+        .join(models.Team, models.Team.id == models.Person.team_id)
         .where(models.Person.active.is_(True), models.Team.active.is_(True))
     )
     if team_id:
@@ -115,13 +107,9 @@ def list_dashboard_submissions(
 
     pairs = list(db.execute(pair_stmt).all())
 
-    # Existing submissions for the month
     sub_stmt = select(models.Submission).where(models.Submission.month == month_date)
-    if team_id:
-        sub_stmt = sub_stmt.where(models.Submission.team_id == team_id)
-    submissions = {(s.person_id, s.team_id): s for s in db.scalars(sub_stmt).all()}
+    submissions = {s.person_id: s for s in db.scalars(sub_stmt).all()}
 
-    # Project filter (only keep submissions that have at least one line for project)
     project_match: set[str] | None = None
     if project_id:
         project_match = set(
@@ -134,10 +122,9 @@ def list_dashboard_submissions(
 
     rows: list[schemas.DashboardSubmissionRow] = []
     for person_id, person_name, t_id, t_name in pairs:
-        sub = submissions.get((person_id, t_id))
+        sub = submissions.get(person_id)
         if sub is not None:
             if project_match is not None and sub.id not in project_match:
-                # When filtering by project, exclude submissions that don't include it
                 continue
             row = schemas.DashboardSubmissionRow(
                 submission_id=sub.id,
@@ -152,7 +139,6 @@ def list_dashboard_submissions(
             )
         else:
             if project_id:
-                # project filter: skip missing rows
                 continue
             row = schemas.DashboardSubmissionRow(
                 submission_id=None,

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 EmploymentType = Literal["Permanent", "Contractor", "Intern"]
 
 
-# ---------- Base ----------
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -54,7 +53,7 @@ class PersonBase(BaseModel):
     allocation: Decimal = Field(default=Decimal("100"), ge=0, le=100)
     employment_type: EmploymentType = "Permanent"
     funding: str | None = Field(default=None, max_length=120)
-    team_ids: list[str] = Field(default_factory=list)
+    team_id: str
 
 
 class PersonCreate(PersonBase):
@@ -70,7 +69,7 @@ class PersonUpdate(BaseModel):
     allocation: Decimal | None = Field(default=None, ge=0, le=100)
     employment_type: EmploymentType | None = None
     funding: str | None = Field(default=None, max_length=120)
-    team_ids: list[str] | None = None
+    team_id: str | None = None
     active: bool | None = None
 
 
@@ -84,9 +83,9 @@ class PersonRead(ORMBase):
     allocation: Decimal
     employment_type: str
     funding: str | None = None
+    team_id: str
+    team: TeamMini | None = None
     active: bool
-    team_ids: list[str] = Field(default_factory=list)
-    teams: list[TeamMini] = Field(default_factory=list)
 
 
 # ---------- Project ----------
@@ -95,7 +94,6 @@ class ProjectBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     funding: str | None = Field(default=None, max_length=120)
-    team_ids: list[str] = Field(default_factory=list)
 
 
 class ProjectCreate(ProjectBase):
@@ -107,7 +105,6 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     funding: str | None = Field(default=None, max_length=120)
-    team_ids: list[str] | None = None
     active: bool | None = None
 
 
@@ -119,8 +116,6 @@ class ProjectRead(ORMBase):
     funding: str | None = None
     active: bool
     sub_project_count: int = 0
-    team_ids: list[str] = Field(default_factory=list)
-    teams: list[TeamMini] = Field(default_factory=list)
 
 
 class ProjectMini(ORMBase):
@@ -154,7 +149,6 @@ class SubProjectRead(ORMBase, SubProjectBase):
     project_name: str | None = None
 
 
-# ---------- Team-projects (Submit page) ----------
 class SubProjectMini(ORMBase):
     id: str
     name: str
@@ -162,21 +156,13 @@ class SubProjectMini(ORMBase):
     funding: str | None = None
 
 
-class TeamProjectsProject(ORMBase):
+class ProjectWithSubs(ORMBase):
     id: str
     code: str
     name: str
     description: str | None = None
     funding: str | None = None
     sub_projects: list[SubProjectMini] = Field(default_factory=list)
-
-
-class TeamWithProjects(ORMBase):
-    id: str
-    name: str
-    description: str | None = None
-    manager: str | None = None
-    projects: list[TeamProjectsProject] = Field(default_factory=list)
 
 
 # ---------- Submission ----------
@@ -199,7 +185,6 @@ class SubmissionLineRead(ORMBase):
 
 class SubmissionUpsert(BaseModel):
     person_id: str
-    team_id: str
     month: str = Field(pattern=r"^\d{4}-\d{2}$")
     lines: list[SubmissionLineIn] = Field(min_length=1)
 
@@ -239,6 +224,6 @@ class DashboardSubmissionRow(BaseModel):
     team_id: str
     team_name: str
     month: str
-    status: str  # 'submitted' | 'missing'
+    status: str
     total_percent: Decimal | None = None
     updated_at: str | None = None

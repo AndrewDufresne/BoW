@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -13,10 +13,8 @@ router = APIRouter(prefix="/teams", tags=["teams"])
 def _active_member_count(db: Session, team_id: str) -> int:
     return (
         db.scalar(
-            select(func.count(models.Person.id))
-            .join(models.person_team, models.person_team.c.person_id == models.Person.id)
-            .where(
-                models.person_team.c.team_id == team_id,
+            select(func.count(models.Person.id)).where(
+                models.Person.team_id == team_id,
                 models.Person.active.is_(True),
             )
         )
@@ -39,10 +37,9 @@ def _to_read(team: models.Team, member_count: int) -> schemas.TeamRead:
 def list_teams(active: bool | None = None, db: Session = Depends(get_db)):
     stmt = (
         select(models.Team, func.count(models.Person.id))
-        .outerjoin(models.person_team, models.person_team.c.team_id == models.Team.id)
         .outerjoin(
             models.Person,
-            (models.Person.id == models.person_team.c.person_id)
+            (models.Person.team_id == models.Team.id)
             & (models.Person.active.is_(True)),
         )
     )
